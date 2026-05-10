@@ -1,0 +1,103 @@
+{{ define "main" }}
+{{ $tunarr := .Site.Params.tunarrURL }}
+<div class="flex h-full overflow-hidden">
+
+  <!-- Channel list -->
+  <div class="w-52 shrink-0 flex flex-col border-r border-border-default bg-surface-raised overflow-hidden">
+    <div class="px-4 py-3 border-b border-border-default shrink-0">
+      <p class="text-xs font-semibold uppercase tracking-widest text-text-faint">Channels</p>
+    </div>
+    <ul id="channel-list" class="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+      <li class="px-3 py-2 text-text-faint text-xs italic">Loading…</li>
+    </ul>
+  </div>
+
+  <!-- Player -->
+  <div class="flex-1 flex flex-col overflow-hidden p-6 gap-4">
+    <div class="w-full bg-black rounded-lg overflow-hidden" style="aspect-ratio:16/9">
+      <video id="tv-player" class="w-full h-full" controls playsinline></video>
+    </div>
+    <div id="now-playing" class="text-text-faint text-sm">Select a channel to begin.</div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+<script>
+(function () {
+  const TUNARR = "{{ $tunarr }}";
+  const video   = document.getElementById('tv-player');
+  const list    = document.getElementById('channel-list');
+  const nowPlaying = document.getElementById('now-playing');
+  let hls = null;
+
+  function setActive(id) {
+    document.querySelectorAll('.ch-btn').forEach(btn => {
+      const on = btn.dataset.id === String(id);
+      btn.classList.toggle('ch-btn-active', on);
+      btn.classList.toggle('text-text-muted', !on);
+    });
+  }
+
+  function play(channel) {
+    const url = `${TUNARR}/stream/channel/${channel.id}`;
+
+    if (hls) { hls.destroy(); hls = null; }
+
+    if (Hls.isSupported()) {
+      hls = new Hls({ enableWorker: true });
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      hls.once(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = url;
+      video.play().catch(() => {});
+    }
+
+    nowPlaying.innerHTML =
+      `<span class="text-text-primary font-medium">${channel.number}. ${channel.name}</span>`;
+    setActive(channel.id);
+  }
+
+  function renderChannels(channels) {
+    list.innerHTML = '';
+    channels.sort((a, b) => a.number - b.number).forEach(ch => {
+      const li = document.createElement('li');
+      const iconHTML = ch.icon?.path
+        ? `<img src="${TUNARR}${ch.icon.path}" class="w-5 h-5 rounded object-cover shrink-0" onerror="this.remove()">`
+        : `<span class="w-5 h-5 rounded bg-surface-overlay shrink-0 flex items-center justify-center text-[9px] text-text-faint">${ch.number}</span>`;
+
+      li.innerHTML = `
+        <button class="ch-btn w-full text-left px-3 py-2 rounded text-sm text-text-muted
+                        hover:bg-surface-overlay hover:text-text-primary transition-colors
+                        flex items-center gap-2 min-w-0"
+                data-id="${ch.id}">
+          ${iconHTML}
+          <span class="truncate">${ch.number}. ${ch.name}</span>
+        </button>`;
+      li.querySelector('.ch-btn').addEventListener('click', () => play(ch));
+      list.appendChild(li);
+    });
+  }
+
+  async function loadChannels() {
+    try {
+      const res = await fetch(`${TUNARR}/api/channels`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const channels = await res.json();
+      if (!channels.length) throw new Error('No channels found');
+      renderChannels(channels);
+    } catch (err) {
+      list.innerHTML = `
+        <li class="px-3 py-2 text-xs space-y-1">
+          <p class="text-accent font-medium">Could not load channels</p>
+          <p class="text-text-faint">${err.message}</p>
+          <p class="text-text-faint">Make sure Tunarr is running and CORS is enabled, or check the IP in hugo.toml.</p>
+        </li>`;
+    }
+  }
+
+  loadChannels();
+})();
+</script>
+{{ end }}
