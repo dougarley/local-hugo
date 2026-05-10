@@ -1,0 +1,216 @@
+{{ define "main" }}
+{{ $immich := .Site.Params.immichURL }}
+{{ $album  := .Site.Params.immichAlbum }}
+{{ $key    := .Site.Params.immichKey }}
+<div class="flex flex-col h-full overflow-hidden">
+
+  <!-- Header -->
+  <div class="px-8 py-4 border-b border-border-default shrink-0 flex items-center justify-between">
+    <div>
+      <h1 id="album-name" class="text-lg font-bold text-text-primary">Photos</h1>
+      <p id="album-count" class="text-text-faint text-xs mt-0.5"></p>
+    </div>
+    <div id="status-msg" class="text-text-faint text-xs"></div>
+  </div>
+
+  <!-- Grid -->
+  <div id="photo-grid"
+       class="flex-1 overflow-y-auto p-6 grid gap-2"
+       style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr))">
+    <!-- Populated by JS -->
+  </div>
+
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox"
+     class="fixed inset-0 z-50 bg-black/90 hidden items-center justify-center"
+     role="dialog" aria-modal="true">
+  <button id="lb-close"
+          class="absolute top-4 right-5 text-white/60 hover:text-white text-3xl leading-none"
+          aria-label="Close">&#x2715;</button>
+  <button id="lb-prev"
+          class="absolute left-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-4xl leading-none px-2"
+          aria-label="Previous">&#x2039;</button>
+  <button id="lb-next"
+          class="absolute right-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-4xl leading-none px-2"
+          aria-label="Next">&#x203a;</button>
+  <img id="lb-img" src="" alt=""
+       class="max-h-[90vh] max-w-[90vw] object-contain rounded shadow-2xl">
+  <p id="lb-caption" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/50 text-xs"></p>
+</div>
+
+<style>
+  .photo-cell {
+    aspect-ratio: 1;
+    background-color: var(--color-surface-raised);
+    border-radius: 0.375rem;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+  }
+  .photo-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: opacity 0.2s;
+  }
+  .photo-cell .placeholder {
+    width: 100%;
+    height: 100%;
+    background: var(--color-surface-overlay);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  .photo-cell:hover img { opacity: 0.85; }
+  .photo-cell .video-badge {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    font-size: 10px;
+    padding: 2px 5px;
+    border-radius: 3px;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+  }
+</style>
+
+<script>
+(function () {
+  const IMMICH = "{{ $immich }}";
+  const ALBUM  = "{{ $album }}";
+  const KEY    = "{{ $key }}";
+
+  const grid      = document.getElementById('photo-grid');
+  const lightbox  = document.getElementById('lightbox');
+  const lbImg     = document.getElementById('lb-img');
+  const lbCaption = document.getElementById('lb-caption');
+  const statusMsg = document.getElementById('status-msg');
+
+  let assets  = [];
+  let current = 0;
+  // Cache object URLs so we don't re-fetch
+  const blobCache = {};
+
+  // ── Fetch helpers ──────────────────────────────────────────────
+  function apiFetch(path) {
+    return fetch(`${IMMICH}${path}`, { headers: { 'x-api-key': KEY } });
+  }
+
+  async function blobURL(assetId, size) {
+    const cacheKey = `${assetId}:${size}`;
+    if (blobCache[cacheKey]) return blobCache[cacheKey];
+    const res = await apiFetch(`/api/assets/${assetId}/thumbnail?size=${size}`);
+    if (!res.ok) throw new Error(`thumbnail ${res.status}`);
+    const url = URL.createObjectURL(await res.blob());
+    blobCache[cacheKey] = url;
+    return url;
+  }
+
+  // ── Grid rendering ─────────────────────────────────────────────
+  function renderGrid(items) {
+    grid.innerHTML = '';
+    items.forEach((asset, i) => {
+      const cell = document.createElement('div');
+      cell.className = 'photo-cell';
+      cell.innerHTML = '<div class="placeholder"></div>'
+        + (asset.type === 'VIDEO' ? '<span class="video-badge">▶ video</span>' : '');
+      cell.addEventListener('click', () => openLightbox(i));
+      grid.appendChild(cell);
+
+      // Lazy-load thumbnail via IntersectionObserver
+      const observer = new IntersectionObserver(entries => {
+        if (!entries[0].isIntersecting) return;
+        observer.disconnect();
+        blobURL(asset.id, 'thumbnail').then(url => {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = asset.originalFileName || '';
+          cell.replaceChildren(img);
+          if (asset.type === 'VIDEO') {
+            const badge = document.createElement('span');
+            badge.className = 'video-badge';
+            badge.textContent = '▶ video';
+            cell.appendChild(badge);
+          }
+        }).catch(() => {
+          cell.querySelector('.placeholder')?.classList.remove('placeholder');
+        });
+      }, { rootMargin: '200px' });
+      observer.observe(cell);
+    });
+  }
+
+  // ── Lightbox ───────────────────────────────────────────────────
+  function openLightbox(index) {
+    current = index;
+    lightbox.classList.replace('hidden', 'flex');
+    loadLightboxImage(current);
+  }
+
+  function closeLightbox() {
+    lightbox.classList.replace('flex', 'hidden');
+    lbImg.src = '';
+  }
+
+  async function loadLightboxImage(index) {
+    const asset = assets[index];
+    lbImg.style.opacity = '0.4';
+    lbCaption.textContent = asset.originalFileName || '';
+    try {
+      lbImg.src = await blobURL(asset.id, 'preview');
+    } catch {
+      lbImg.src = '';
+    }
+    lbImg.style.opacity = '1';
+  }
+
+  function navigate(dir) {
+    current = (current + dir + assets.length) % assets.length;
+    loadLightboxImage(current);
+  }
+
+  document.getElementById('lb-close').addEventListener('click', closeLightbox);
+  document.getElementById('lb-prev').addEventListener('click', () => navigate(-1));
+  document.getElementById('lb-next').addEventListener('click', () => navigate(1));
+  lightbox.addEventListener('click', e => { if (e.target === lightbox) closeLightbox(); });
+  document.addEventListener('keydown', e => {
+    if (lightbox.classList.contains('hidden')) return;
+    if (e.key === 'Escape')      closeLightbox();
+    if (e.key === 'ArrowLeft')   navigate(-1);
+    if (e.key === 'ArrowRight')  navigate(1);
+  });
+
+  // ── Load album ─────────────────────────────────────────────────
+  async function init() {
+    statusMsg.textContent = 'Loading…';
+    try {
+      const res = await apiFetch(`/api/albums/${ALBUM}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const album = await res.json();
+
+      document.getElementById('album-name').textContent = album.albumName || 'Photos';
+      assets = (album.assets || []).filter(a => a.type === 'IMAGE' || a.type === 'VIDEO');
+      document.getElementById('album-count').textContent =
+        `${assets.length} item${assets.length !== 1 ? 's' : ''}`;
+      statusMsg.textContent = '';
+      renderGrid(assets);
+    } catch (err) {
+      statusMsg.innerHTML = '';
+      grid.innerHTML = `
+        <div class="col-span-full px-2 py-4 text-xs space-y-1">
+          <p class="text-accent font-medium">Could not load album</p>
+          <p class="text-text-faint">${err.message}</p>
+          <p class="text-text-faint">Check the IP, album ID, and API key in hugo.toml. Immich must also allow CORS from this site's origin.</p>
+        </div>`;
+    }
+  }
+
+  init();
+})();
+</script>
+{{ end }}
