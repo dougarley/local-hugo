@@ -5,6 +5,6 @@
     "build": "tailwindcss -i assets/css/input.css -o assets/css/output.css && hugo server --bind 0.0.0.0 --port 8181 --baseURL /"
   },
   "devDependencies": {
-    "tailwindcss": "^4.3.0"
+    "@tailwindcss/cli": "^4.3.0"
   }
 }
