@@ -1,0 +1,13 @@
+{{ define "main" }}
+<div class="px-12 py-16 max-w-2xl">
+  <h1 class="text-4xl font-bold text-text-primary mb-4 leading-tight">
+    {{ .Site.Title }}
+  </h1>
+  <p class="text-text-muted text-lg leading-relaxed mb-8">
+    Welcome. Use the sidebar to explore.
+  </p>
+  {{ with .Content }}
+  <div class="content-body">{{ . }}</div>
+  {{ end }}
+</div>
+{{ end }}

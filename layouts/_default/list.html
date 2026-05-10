@@ -1,0 +1,33 @@
+{{ define "main" }}
+<div class="px-12 py-12">
+
+  <div class="mb-8 pb-6 border-b border-border-default">
+    <h1 class="text-3xl font-bold text-text-primary">{{ .Title }}</h1>
+    {{ with .Content }}
+    <div class="content-body mt-3 text-text-muted">{{ . }}</div>
+    {{ end }}
+  </div>
+
+  {{ if .Pages }}
+  <ul class="space-y-3 max-w-2xl">
+    {{ range .Pages }}
+    <li>
+      <a href="{{ .RelPermalink }}"
+         class="group flex flex-col gap-1 rounded-lg px-4 py-3 border border-border-subtle bg-surface-raised hover:border-accent transition-colors duration-150">
+        <span class="text-text-primary font-medium group-hover:text-accent transition-colors">{{ .Title }}</span>
+        {{ with .Description }}
+        <span class="text-text-muted text-sm">{{ . }}</span>
+        {{ end }}
+        {{ with .Date }}
+        <span class="text-text-faint text-xs">{{ .Format "Jan 2, 2006" }}</span>
+        {{ end }}
+      </a>
+    </li>
+    {{ end }}
+  </ul>
+  {{ else }}
+  <p class="text-text-faint text-sm italic">Nothing here yet.</p>
+  {{ end }}
+
+</div>
+{{ end }}
