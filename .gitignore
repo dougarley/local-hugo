@@ -1,0 +1,17 @@
+# Hugo build output
+public/
+.hugo_build.lock
+
+# Tailwind standalone binary
+tailwindcss
+
+# Generated CSS (rebuilt from input.css)
+assets/css/output.css
+assets/css/daisyui.css
+
+# macOS
+.DS_Store
+
+# Editor
+*.code-workspace
+.vscode/

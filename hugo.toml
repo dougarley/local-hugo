@@ -1,0 +1,17 @@
+baseURL = 'https://example.org/'
+locale = 'en-us'
+title = "My Site"
+
+# Sensitive values should be set via environment variables in your
+# HugoMods docker config on Unraid — Hugo reads HUGO_PARAMS_* automatically:
+#
+#   HUGO_PARAMS_TUNARRURL   = http://your-nas-ip:8000
+#   HUGO_PARAMS_IMMICHURL   = http://your-immich-url
+#   HUGO_PARAMS_IMMICHALBUM = your-album-id
+#   HUGO_PARAMS_IMMICHKEY   = your-api-key
+
+[params]
+  tunarrURL   = ""
+  immichURL   = ""
+  immichAlbum = ""
+  immichKey   = ""
