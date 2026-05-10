@@ -1,0 +1,10 @@
+{
+  "name": "home-site",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tailwindcss -i assets/css/input.css -o assets/css/output.css && hugo --baseURL \"${BASE_URL:-/}\""
+  },
+  "devDependencies": {
+    "tailwindcss": "^4.3.0"
+  }
+}
