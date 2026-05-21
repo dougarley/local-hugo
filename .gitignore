@@ -19,6 +19,9 @@ assets/css/daisyui.css
 # Local config — contains sensitive NAS credentials, never commit
 .claude-local.md
 
+# Local dev launcher — contains API keys, never commit
+dev.ps1
+
 # npm
 node_modules/
 

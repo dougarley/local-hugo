@@ -1,6 +1,6 @@
 baseURL = 'https://example.org/'
 locale = 'en-us'
-title = "My Site"
+title = "LAN Hub"
 
 # Sensitive values should be set via environment variables in your
 # HugoMods docker config on Unraid — Hugo reads HUGO_PARAMS_* automatically:

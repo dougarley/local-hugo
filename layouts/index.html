@@ -3,9 +3,17 @@
   <h1 class="text-4xl font-bold text-text-primary mb-4 leading-tight">
     {{ .Site.Title }}
   </h1>
-  <p class="text-text-muted text-lg leading-relaxed mb-8">
-    Welcome. Use the sidebar to explore.
+  <p class="text-text-muted text-lg leading-relaxed mb-6">
+    Your local home media hub. Browse LAN party games, flip through photos, watch
+    live TV channels, and grab files from the shared drive — all running on the
+    local network, no internet required.
   </p>
+  <ul class="text-text-faint text-sm space-y-1 mb-8 list-none">
+    <li>🎮 <a href="/games/" class="hover:text-text-primary transition-colors">Games</a> &amp; <a href="/classic-games/" class="hover:text-text-primary transition-colors">Classic Games</a> — LAN party game lists</li>
+    <li>📷 <a href="/photos/" class="hover:text-text-primary transition-colors">Photos</a> — household photo gallery via Immich</li>
+    <li>📺 <a href="/local-tv/" class="hover:text-text-primary transition-colors">Local TV</a> — live channels via Tunarr</li>
+    <li>📁 <a href="/shared-files/" class="hover:text-text-primary transition-colors">Shared Files</a> — browse the NAS shared drive</li>
+  </ul>
 
   <form action="https://www.google.com/search" method="get" target="_blank" class="flex gap-2 mb-8">
     <input
