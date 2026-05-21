@@ -15,3 +15,12 @@ assets/css/daisyui.css
 # Editor
 *.code-workspace
 .vscode/
+
+# Local config — contains sensitive NAS credentials, never commit
+.claude-local.md
+
+# npm
+node_modules/
+
+# Claude Code local settings (contains NAS password in allowed commands)
+.claude/settings.local.json

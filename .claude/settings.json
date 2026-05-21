@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(where hugo *)",
+      "Bash(Get-Command hugo *)",
+      "Bash(Select-Object -ExpandProperty Source)"
+    ]
+  }
+}
