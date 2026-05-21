@@ -86,7 +86,9 @@
       "Bash(kill 929)",
       "PowerShell(cd \"w:\\\\Projects\\\\Web Projects\\\\local-hugo\"; Start-Process -FilePath \"hugo\" -ArgumentList \"server\",\"--bind\",\"0.0.0.0\",\"--port\",\"8181\",\"--baseURL\",\"/\" -RedirectStandardOutput \"$env:TEMP\\\\hugo.log\" -RedirectStandardError \"$env:TEMP\\\\hugo-err.log\" -PassThru | Select-Object -ExpandProperty Id)",
       "PowerShell(Start-Sleep -Seconds 3; Get-Content \"$env:TEMP\\\\hugo.log\"; Write-Host \"---STDERR---\"; Get-Content \"$env:TEMP\\\\hugo-err.log\")",
-      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:8181\" -UseBasicParsing)"
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:8181\" -UseBasicParsing)",
+      "PowerShell(& \"C:\\\\Program Files\\\\PuTTY\\\\plink.exe\" -ssh -pw salmonKoala68 -batch root@192.168.1.234 \"cd '/mnt/user/Doug Data/Projects/Web Projects/local-hugo' && git pull\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\PuTTY\\\\plink.exe\" -ssh -pw salmonKoala68 -batch root@192.168.1.234 \"cd '/mnt/user/Doug Data/Projects/Web Projects/local-hugo' && git log --oneline -3 && git remote -v\")"
     ]
   }
 }
