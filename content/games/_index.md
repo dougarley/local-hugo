@@ -2,6 +2,8 @@
 title: "Games"
 ---
 
+## Current LAN Games
+
 ### Dale & Dawson Stationery Supplies [[Steam]](https://store.steampowered.com/app/2920570/Dale__Dawson_Stationery_Supplies/)
 
 A social deduction game set in an office where players take on roles as Manager, Specialists, or Slackers. Slackers blend in and mimic Specialists to avoid the Manager's suspicion — figure out who's actually doing their job before the day is over.
