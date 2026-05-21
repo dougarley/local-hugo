@@ -26,6 +26,7 @@ The classic arena shooter with vehicles. Deathmatch, CTF, Onslaught, and more �
 
 #### Server info
 
+- **Address:** `192.168.1.234` — open the in-game server browser or use *Open Location* to direct-connect
 
 ### GoldenEye Source [[geshl2.com]](https://geshl2.com)
 
@@ -33,16 +34,30 @@ A free fan-made multiplayer remake of GoldenEye 007 built on the Half-Life 2 Sou
 
 #### Server info
 
+- **Address:** `192.168.1.234:27015` — use *Find Servers → LAN* or direct-connect in the Source engine browser
+
 ### Gunbound Thor's Hammer [[Local]]()
 
 Turn-based artillery multiplayer in the style of Worms. Pick a mobile (vehicle), adjust your angle and power, and account for wind as you lob shots at the opposing team. Free-to-play classic from the early 2000s.
 
 #### Server info
 
+- **Server:** `192.168.1.234:8360`
+
 ## Other Dedicated Servers
 
 ### Satisfactory
 
+- **Address:** `192.168.1.234:7777` — join via *Manage Sessions → Join Game* and enter the server IP
+
 ### Valheim
 
+- **Address:** `192.168.1.234:2459` — join via *Join Game → Add server* in the server browser
+
+### Valheim (modded)
+
+- **Address:** `192.168.1.234:2456` — requires matching mods installed via Thunderstore/r2modman
+
 ### Windrose
+
+- **Address:** `192.168.1.234:7777` — enter the server IP in the in-game join screen
