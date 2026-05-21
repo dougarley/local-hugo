@@ -6,6 +6,22 @@
   <p class="text-text-muted text-lg leading-relaxed mb-8">
     Welcome. Use the sidebar to explore.
   </p>
+
+  <form action="https://www.google.com/search" method="get" target="_blank" class="flex gap-2 mb-8">
+    <input
+      type="text"
+      name="q"
+      placeholder="Search Google..."
+      class="flex-1 rounded-lg px-4 py-2.5 bg-surface-raised border border-border-default text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent transition-colors duration-150"
+    >
+    <button
+      type="submit"
+      class="px-5 py-2.5 rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors duration-150"
+    >
+      Search
+    </button>
+  </form>
+
   {{ with .Content }}
   <div class="content-body">{{ . }}</div>
   {{ end }}
