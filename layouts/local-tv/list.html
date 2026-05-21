@@ -40,15 +40,35 @@
   }
 
   function play(channel) {
-    const url = `${TUNARR}/stream/channels/${channel.number}.m3u8`;
+    const url = `${TUNARR}/stream/channels/${channel.id}.m3u8`;
+    let retryTimer = null;
 
     if (hls) { hls.destroy(); hls = null; }
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
 
     if (Hls.isSupported()) {
-      hls = new Hls({ enableWorker: true });
+      hls = new Hls({
+        enableWorker: true,
+        fragLoadingMaxRetry: 6,
+        fragLoadingRetryDelay: 1000,
+        fragLoadingMaxRetryTimeout: 8000,
+        levelLoadingMaxRetry: 6,
+        levelLoadingRetryDelay: 1000,
+        manifestLoadingMaxRetry: 6,
+        manifestLoadingRetryDelay: 1000,
+      });
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.once(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          nowPlaying.innerHTML =
+            `<span class="text-text-primary font-medium">${channel.number}. ${channel.name}</span>`
+            + ` <span class="text-text-faint text-xs ml-2">Stream starting… retrying</span>`;
+          hls.destroy(); hls = null;
+          retryTimer = setTimeout(() => play(channel), 4000);
+        }
+      });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = url;
       video.play().catch(() => {});
