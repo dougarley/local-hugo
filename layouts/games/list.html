@@ -1,0 +1,20 @@
+{{ define "main" }}
+<div class="px-12 py-12">
+
+  <div class="mb-8 pb-6 border-b border-border-default">
+    <h1 class="text-3xl font-bold text-text-primary">{{ .Title }}</h1>
+  </div>
+
+  {{ with .TableOfContents }}
+  <nav class="toc mb-10 p-5 rounded-lg border border-border-subtle bg-surface-raised">
+    <p class="text-xs font-semibold uppercase tracking-widest text-text-faint mb-3">Contents</p>
+    {{ . }}
+  </nav>
+  {{ end }}
+
+  {{ with .Content }}
+  <div class="content-body">{{ . }}</div>
+  {{ end }}
+
+</div>
+{{ end }}
