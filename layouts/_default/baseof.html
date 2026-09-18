@@ -8,43 +8,37 @@
   <link rel="stylesheet" href="{{ $css.RelPermalink }}">
 </head>
 <body class="h-full bg-surface-base text-text-primary antialiased">
-<div class="flex h-full overflow-hidden">
+<div class="flex flex-col h-full overflow-hidden">
 
-  <!-- Left sidebar -->
-  <aside class="w-56 shrink-0 flex flex-col bg-surface-raised border-r border-border-default overflow-y-auto">
+  <!-- Top bar -->
+  <header class="shrink-0 flex items-center gap-6 px-5 h-14 bg-surface-raised border-b border-border-default overflow-x-auto">
 
     <!-- Site title -->
-    <div class="px-5 py-4 border-b border-border-default">
-      <a href="/" class="text-base font-bold tracking-tight text-accent hover:text-accent-hover transition-colors">
-        {{ .Site.Title }}
-      </a>
-    </div>
+    <a href="/" class="shrink-0 text-base font-bold tracking-tight text-accent hover:text-accent-hover transition-colors">
+      {{ .Site.Title }}
+    </a>
 
     <!-- Nav groups -->
-    <nav class="flex-1 px-2 py-4 space-y-5">
+    <nav class="flex items-center gap-5 ml-auto">
 
-      <div>
-        <p class="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-text-faint">LAN</p>
-        <ul>
-          <li><a href="/"              class="nav-item {{ if .IsHome }}nav-item-active{{ end }}">Home</a></li>
-          <li><a href="/games/"        class="nav-item {{ if eq .Section "games"         }}nav-item-active{{ end }}">Games List</a></li>
-          <li><a href="/classic-games/" class="nav-item {{ if eq .Section "classic-games" }}nav-item-active{{ end }}">Classic Games</a></li>
-        </ul>
-      </div>
+      <ul class="flex items-center gap-1">
+        <li><a href="/"              class="nav-item {{ if .IsHome }}nav-item-active{{ end }}">Home</a></li>
+        <li><a href="/games/"        class="nav-item {{ if eq .Section "games"         }}nav-item-active{{ end }}">Games List</a></li>
+        <li><a href="/classic-games/" class="nav-item {{ if eq .Section "classic-games" }}nav-item-active{{ end }}">Classic Games</a></li>
+      </ul>
 
-      <div>
-        <p class="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-text-faint">NASty</p>
-        <ul>
-          <li><a href="/shared-files/" class="nav-item {{ if eq .Section "shared-files" }}nav-item-active{{ end }}">Shared Files</a></li>
-          <li><a href="/local-tv/"     class="nav-item {{ if eq .Section "local-tv"     }}nav-item-active{{ end }}">Local TV</a></li>
-          <li><a href="/photos/"       class="nav-item {{ if eq .Section "photos"        }}nav-item-active{{ end }}">Photos</a></li>
-        </ul>
-      </div>
+      <span class="h-5 w-px bg-border-default" aria-hidden="true"></span>
+
+      <ul class="flex items-center gap-1">
+        <li><a href="/shared-files/" class="nav-item {{ if eq .Section "shared-files" }}nav-item-active{{ end }}">Shared Files</a></li>
+        <li><a href="/local-tv/"     class="nav-item {{ if eq .Section "local-tv"     }}nav-item-active{{ end }}">Local TV</a></li>
+        <li><a href="/photos/"       class="nav-item {{ if eq .Section "photos"        }}nav-item-active{{ end }}">Photos</a></li>
+      </ul>
 
     </nav>
-  </aside>
+  </header>
 
-  <!-- Right detail panel -->
+  <!-- Detail panel -->
   <main class="flex-1 overflow-y-auto bg-surface-base">
     {{ block "main" . }}{{ end }}
   </main>
