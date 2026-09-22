@@ -1,23 +1,66 @@
 {{ define "main" }}
 {{ $tunarr := .Site.Params.tunarrURL }}
-<div class="flex h-full overflow-hidden">
+<div class="flex flex-col h-full overflow-hidden">
 
-  <!-- Channel list -->
-  <div class="w-52 shrink-0 flex flex-col border-r border-border-default bg-surface-raised overflow-hidden">
-    <div class="px-4 py-3 border-b border-border-default shrink-0">
-      <p class="text-xs font-semibold uppercase tracking-widest text-text-faint">Channels</p>
+  <!-- Top: player + channel list -->
+  <div class="flex-1 min-h-0 flex overflow-hidden">
+
+    <!-- Player -->
+    <div class="flex-1 min-w-0 flex flex-col overflow-hidden p-6 gap-4">
+      <div class="w-full bg-black rounded-lg overflow-hidden shrink-0" style="aspect-ratio:16/9">
+        <video id="tv-player" class="w-full h-full" controls playsinline></video>
+      </div>
+      <div class="flex items-start justify-between gap-4 min-w-0 shrink-0">
+        <div id="now-playing" class="min-w-0 text-text-faint text-sm">Select a channel to begin.</div>
+        <button id="copy-stream-btn" type="button" class="btn btn-sm btn-accent btn-outline shrink-0 hidden">
+          Copy Stream Link
+        </button>
+      </div>
     </div>
-    <ul id="channel-list" class="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
-      <li class="px-3 py-2 text-text-faint text-xs italic">Loading…</li>
-    </ul>
+
+    <!-- Channel list -->
+    <div class="w-72 shrink-0 flex flex-col border-l border-border-default bg-surface-raised overflow-hidden">
+      <div class="px-4 py-3 border-b border-border-default shrink-0 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-xs font-semibold uppercase tracking-widest text-text-faint">Channels</p>
+          <span id="channel-count" class="text-xs text-text-faint"></span>
+        </div>
+        <input id="channel-search" type="text" placeholder="Search channels…" autocomplete="off"
+               class="input input-sm input-bordered w-full bg-surface-overlay border-border-default text-text-primary text-sm" />
+      </div>
+      <ul id="channel-list" class="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+        <li class="px-3 py-2 text-text-faint text-xs italic">Loading…</li>
+      </ul>
+    </div>
+
   </div>
 
-  <!-- Player -->
-  <div class="flex-1 flex flex-col overflow-hidden p-6 gap-4">
-    <div class="w-full bg-black rounded-lg overflow-hidden" style="aspect-ratio:16/9">
-      <video id="tv-player" class="w-full h-full" controls playsinline></video>
+  <!-- Bottom: TV Guide (EPG) -->
+  <div class="h-72 shrink-0 flex flex-col border-t border-border-default bg-surface-raised overflow-hidden">
+    <div class="px-4 py-2 border-b border-border-default shrink-0 flex items-center justify-between">
+      <p class="text-xs font-semibold uppercase tracking-widest text-text-faint">TV Guide</p>
+      <button id="epg-jump-now" type="button" class="btn btn-xs btn-ghost text-text-muted">Jump to Now</button>
     </div>
-    <div id="now-playing" class="text-text-faint text-sm">Select a channel to begin.</div>
+    <div id="epg-scroll" class="flex-1 overflow-auto">
+      <div id="epg-grid" class="relative" style="display:grid;grid-template-columns:192px 1200px">
+
+        <!-- header row -->
+        <div class="sticky top-0 left-0 z-30 h-10 bg-surface-raised border-b border-r border-border-default flex items-center px-3">
+          <span class="text-[10px] uppercase tracking-widest text-text-faint">Channel</span>
+        </div>
+        <div id="epg-time-header" class="sticky top-0 z-20 h-10 bg-surface-raised border-b border-border-default relative"></div>
+
+        <div id="epg-rows-placeholder" class="col-span-2 px-3 py-4 text-text-faint text-xs italic">Loading guide…</div>
+
+        <!-- now-line overlay -->
+        <div id="epg-now-overlay" class="absolute top-0 bottom-0 pointer-events-none z-10" style="left:192px;right:0">
+          <div id="epg-now-line" class="absolute top-0 bottom-0 w-px bg-accent" style="left:0">
+            <span id="epg-now-label" class="absolute top-10 left-1 text-[10px] font-medium text-accent bg-surface-raised px-1 rounded"></span>
+          </div>
+        </div>
+
+      </div>
+    </div>
   </div>
 
 </div>
@@ -26,11 +69,203 @@
 <script>
 (function () {
   const TUNARR = "{{ $tunarr }}";
-  const video   = document.getElementById('tv-player');
-  const list    = document.getElementById('channel-list');
-  const nowPlaying = document.getElementById('now-playing');
-  let hls = null;
 
+  // ── EPG layout constants ───────────────────────────────────────
+  const PX_PER_MIN     = 4;
+  const WINDOW_MINUTES = 300; // 5-hour visible window
+  const TICK_MIN       = 30;
+
+  const video          = document.getElementById('tv-player');
+  const list           = document.getElementById('channel-list');
+  const nowPlaying      = document.getElementById('now-playing');
+  const copyStreamBtn   = document.getElementById('copy-stream-btn');
+  const channelSearch   = document.getElementById('channel-search');
+  const channelCount    = document.getElementById('channel-count');
+  const epgGrid          = document.getElementById('epg-grid');
+  const epgTimeHeader    = document.getElementById('epg-time-header');
+  const epgRowsPlaceholder = document.getElementById('epg-rows-placeholder');
+  const epgScroll         = document.getElementById('epg-scroll');
+  const epgJumpNow        = document.getElementById('epg-jump-now');
+  const epgNowLine        = document.getElementById('epg-now-line');
+  const epgNowLabel       = document.getElementById('epg-now-label');
+
+  let hls = null;
+  let channels = [];
+  let activeChannel = null;
+  let programsByChannel = {}; // tunarr channel id -> [{start, stop, title}]
+  let epgRowEls = []; // dynamically created grid row cells, tracked for cleanup
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function formatHM(d) { return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+
+  function iconHTML(ch, sizeClasses) {
+    const iconPath = ch.icon?.path
+      ? (ch.icon.path.startsWith('http') ? new URL(ch.icon.path).pathname : ch.icon.path)
+      : null;
+    return iconPath
+      ? `<img src="${TUNARR}${iconPath}" class="${sizeClasses} rounded object-cover shrink-0" onerror="this.remove()">`
+      : `<span class="${sizeClasses} rounded bg-surface-overlay shrink-0 flex items-center justify-center text-[9px] text-text-faint">${ch.number}</span>`;
+  }
+
+  // ── XMLTV guide parsing ────────────────────────────────────────
+  function parseXmltvDate(str) {
+    const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s?([+-]\d{4}))?$/.exec(str || '');
+    if (!m) return null;
+    const [, Y, Mo, D, H, Mi, S, off] = m;
+    let ms = Date.UTC(+Y, +Mo - 1, +D, +H, +Mi, +S);
+    if (off) {
+      const sign = off[0] === '-' ? -1 : 1;
+      const offMin = sign * (parseInt(off.slice(1, 3), 10) * 60 + parseInt(off.slice(3, 5), 10));
+      ms -= offMin * 60000;
+    }
+    return new Date(ms);
+  }
+
+  function buildProgramMap(xmlDoc, chans) {
+    const nameToXmltvId = {};
+    xmlDoc.querySelectorAll('channel').forEach(c => {
+      const id = c.getAttribute('id');
+      const dn = c.querySelector('display-name')?.textContent?.trim().toLowerCase();
+      if (id && dn) nameToXmltvId[dn] = id;
+    });
+
+    const programmesByXmltvId = {};
+    xmlDoc.querySelectorAll('programme').forEach(p => {
+      const chId = p.getAttribute('channel');
+      const start = parseXmltvDate(p.getAttribute('start'));
+      const stop  = parseXmltvDate(p.getAttribute('stop'));
+      const title = p.querySelector('title')?.textContent?.trim() || 'Untitled';
+      if (!chId || !start || !stop) return;
+      (programmesByXmltvId[chId] ||= []).push({ start, stop, title });
+    });
+
+    const map = {};
+    chans.forEach(ch => {
+      const xmltvId = programmesByXmltvId[ch.id] ? ch.id
+        : programmesByXmltvId[String(ch.number)] ? String(ch.number)
+        : nameToXmltvId[String(ch.name).trim().toLowerCase()];
+      if (xmltvId && programmesByXmltvId[xmltvId]) {
+        map[ch.id] = programmesByXmltvId[xmltvId].sort((a, b) => a.start - b.start);
+      }
+    });
+    return map;
+  }
+
+  function currentProgram(ch) {
+    const progs = programsByChannel[ch.id];
+    if (!progs) return null;
+    const now = Date.now();
+    return progs.find(p => p.start.getTime() <= now && now < p.stop.getTime()) || null;
+  }
+
+  async function loadGuide() {
+    try {
+      const res = await fetch(`${TUNARR}/api/xmltv.xml`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      const xml = new DOMParser().parseFromString(text, 'application/xml');
+      if (xml.querySelector('parsererror')) throw new Error('Invalid XMLTV data');
+      programsByChannel = buildProgramMap(xml, channels);
+    } catch (err) {
+      programsByChannel = {};
+      console.warn('EPG unavailable:', err.message);
+    }
+    renderEPG();
+    updateSidebarSubtitles();
+    if (activeChannel) updateNowPlayingText(activeChannel);
+  }
+
+  // ── EPG grid rendering ─────────────────────────────────────────
+  function computeWindowStart(now) {
+    const ms30 = TICK_MIN * 60000;
+    const aligned = Math.floor(now.getTime() / ms30) * ms30;
+    return new Date(aligned - ms30);
+  }
+
+  function renderEPG() {
+    if (!channels.length) return;
+    epgRowsPlaceholder.remove();
+
+    const now = new Date();
+    const windowStart = computeWindowStart(now);
+    const windowEnd = new Date(windowStart.getTime() + WINDOW_MINUTES * 60000);
+
+    // Time ticks header
+    let ticksHTML = '';
+    for (let m = 0; m <= WINDOW_MINUTES; m += TICK_MIN) {
+      const t = new Date(windowStart.getTime() + m * 60000);
+      ticksHTML += `<div class="absolute top-0 h-full flex items-center px-2 text-[11px] text-text-faint border-l border-border-subtle" style="left:${m * PX_PER_MIN}px">${formatHM(t)}</div>`;
+    }
+    epgTimeHeader.innerHTML = ticksHTML;
+
+    // Remove previously-rendered row cells
+    epgRowEls.forEach(el => el.remove());
+    epgRowEls = [];
+
+    const frag = document.createDocumentFragment();
+    channels.forEach(ch => {
+      const nameCell = document.createElement('div');
+      nameCell.className = 'sticky left-0 z-10 bg-surface-raised border-b border-r border-border-default h-14 flex items-center gap-2 px-3 min-w-0';
+      nameCell.innerHTML = `
+        ${iconHTML(ch, 'w-6 h-6')}
+        <div class="min-w-0">
+          <p class="text-xs text-text-primary truncate">${escapeHtml(ch.name)}</p>
+          <p class="text-[10px] text-text-faint">CH ${ch.number}</p>
+        </div>`;
+
+      const timelineCell = document.createElement('div');
+      timelineCell.className = 'relative h-14 border-b border-border-default';
+
+      const progs = programsByChannel[ch.id] || [];
+      let blocksHTML = '';
+      progs.forEach(p => {
+        const start = p.start < windowStart ? windowStart : p.start;
+        const stop  = p.stop > windowEnd ? windowEnd : p.stop;
+        if (stop <= start) return;
+        const left  = (start - windowStart) / 60000 * PX_PER_MIN;
+        const width = Math.max((stop - start) / 60000 * PX_PER_MIN, 3);
+        const isNow = p.start <= now && now < p.stop;
+        blocksHTML += `
+          <button type="button"
+                  class="epg-block absolute top-1 bottom-1 rounded px-2 text-left text-xs overflow-hidden transition-colors ${isNow
+                    ? 'bg-accent-subtle text-accent border border-accent'
+                    : 'bg-surface-overlay text-text-muted border border-border-default hover:text-text-primary hover:border-text-faint'}"
+                  style="left:${left}px;width:${width}px"
+                  data-channel="${ch.id}"
+                  title="${escapeHtml(p.title)} (${formatHM(p.start)}–${formatHM(p.stop)})">
+            <span class="block truncate font-medium">${escapeHtml(p.title)}</span>
+          </button>`;
+      });
+      timelineCell.innerHTML = blocksHTML || '<span class="absolute inset-0 flex items-center px-3 text-[11px] text-text-faint italic">No guide data</span>';
+      timelineCell.querySelectorAll('.epg-block').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const target = channels.find(c => c.id === btn.dataset.channel);
+          if (target) play(target);
+        });
+      });
+
+      frag.appendChild(nameCell);
+      frag.appendChild(timelineCell);
+      epgRowEls.push(nameCell, timelineCell);
+    });
+    epgGrid.appendChild(frag);
+
+    const nowLeft = (now - windowStart) / 60000 * PX_PER_MIN;
+    epgNowLine.style.left = `${nowLeft}px`;
+    epgNowLabel.textContent = formatHM(now);
+  }
+
+  epgJumpNow.addEventListener('click', () => {
+    epgScroll.scrollTo({ left: 0, behavior: 'smooth' });
+  });
+
+  // ── Player ──────────────────────────────────────────────────────
   function setActive(id) {
     document.querySelectorAll('.ch-btn').forEach(btn => {
       const on = btn.dataset.id === String(id);
@@ -39,7 +274,15 @@
     });
   }
 
+  function updateNowPlayingText(channel) {
+    const cur = currentProgram(channel);
+    nowPlaying.innerHTML =
+      `<span class="text-text-primary font-medium">${channel.number}. ${escapeHtml(channel.name)}</span>`
+      + (cur ? `<span class="text-text-faint text-xs ml-2">${escapeHtml(cur.title)}</span>` : '');
+  }
+
   function play(channel) {
+    activeChannel = channel;
     const url = `${TUNARR}/stream/channels/${channel.id}.m3u8`;
     let retryTimer = null;
 
@@ -63,7 +306,7 @@
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           nowPlaying.innerHTML =
-            `<span class="text-text-primary font-medium">${channel.number}. ${channel.name}</span>`
+            `<span class="text-text-primary font-medium">${channel.number}. ${escapeHtml(channel.name)}</span>`
             + ` <span class="text-text-faint text-xs ml-2">Stream starting… retrying</span>`;
           hls.destroy(); hls = null;
           retryTimer = setTimeout(() => play(channel), 4000);
@@ -74,53 +317,87 @@
       video.play().catch(() => {});
     }
 
-    nowPlaying.innerHTML =
-      `<span class="text-text-primary font-medium">${channel.number}. ${channel.name}</span>`;
+    updateNowPlayingText(channel);
     setActive(channel.id);
+    copyStreamBtn.classList.remove('hidden');
+    copyStreamBtn.dataset.copy = url;
+    copyStreamBtn.textContent = 'Copy Stream Link';
   }
 
-  function renderChannels(channels) {
+  copyStreamBtn.addEventListener('click', () => {
+    const url = copyStreamBtn.dataset.copy;
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+      copyStreamBtn.textContent = 'Copied!';
+      clearTimeout(copyStreamBtn._resetTimer);
+      copyStreamBtn._resetTimer = setTimeout(() => { copyStreamBtn.textContent = 'Copy Stream Link'; }, 1500);
+    });
+  });
+
+  // ── Channel sidebar ───────────────────────────────────────────
+  function updateSidebarSubtitles() {
+    channels.forEach(ch => {
+      const el = document.getElementById(`ch-sub-${ch.id}`);
+      if (!el) return;
+      const cur = currentProgram(ch);
+      el.textContent = cur ? cur.title : '';
+    });
+  }
+
+  function renderChannelSidebar() {
     list.innerHTML = '';
-    channels.sort((a, b) => a.number - b.number).forEach(ch => {
+    channelCount.textContent = `${channels.length} channel${channels.length !== 1 ? 's' : ''}`;
+    channels.forEach(ch => {
       const li = document.createElement('li');
-      const iconPath = ch.icon?.path
-        ? (ch.icon.path.startsWith('http') ? new URL(ch.icon.path).pathname : ch.icon.path)
-        : null;
-      const iconHTML = iconPath
-        ? `<img src="${TUNARR}${iconPath}" class="w-5 h-5 rounded object-cover shrink-0" onerror="this.remove()">`
-        : `<span class="w-5 h-5 rounded bg-surface-overlay shrink-0 flex items-center justify-center text-[9px] text-text-faint">${ch.number}</span>`;
+      li.dataset.search = `${ch.number} ${ch.name}`.toLowerCase();
 
       li.innerHTML = `
         <button class="ch-btn w-full text-left px-3 py-2 rounded text-sm text-text-muted
                         hover:bg-surface-overlay hover:text-text-primary transition-colors
                         flex items-center gap-2 min-w-0"
                 data-id="${ch.id}">
-          ${iconHTML}
-          <span class="truncate">${ch.number}. ${ch.name}</span>
+          ${iconHTML(ch, 'w-6 h-6')}
+          <span class="min-w-0 flex-1">
+            <span class="block truncate">${ch.number}. ${escapeHtml(ch.name)}</span>
+            <span id="ch-sub-${ch.id}" class="block truncate text-[11px] text-text-faint"></span>
+          </span>
         </button>`;
       li.querySelector('.ch-btn').addEventListener('click', () => play(ch));
       list.appendChild(li);
     });
   }
 
+  channelSearch.addEventListener('input', () => {
+    const q = channelSearch.value.trim().toLowerCase();
+    list.querySelectorAll('li').forEach(li => {
+      li.classList.toggle('hidden', !!q && !(li.dataset.search || '').includes(q));
+    });
+  });
+
   async function loadChannels() {
     try {
       const res = await fetch(`${TUNARR}/api/channels`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const channels = await res.json();
-      if (!channels.length) throw new Error('No channels found');
-      renderChannels(channels);
+      const data = await res.json();
+      if (!data.length) throw new Error('No channels found');
+      channels = data.sort((a, b) => a.number - b.number);
+      renderChannelSidebar();
+      renderEPG();
+      loadGuide();
     } catch (err) {
       list.innerHTML = `
         <li class="px-3 py-2 text-xs space-y-1">
           <p class="text-accent font-medium">Could not load channels</p>
-          <p class="text-text-faint">${err.message}</p>
+          <p class="text-text-faint">${escapeHtml(err.message)}</p>
           <p class="text-text-faint">Make sure Tunarr is running and CORS is enabled, or check the IP in hugo.toml.</p>
         </li>`;
+      epgRowsPlaceholder.textContent = 'Could not load channels.';
     }
   }
 
   loadChannels();
+  setInterval(() => { if (channels.length) renderEPG(); }, 60000);
+  setInterval(() => { if (channels.length) loadGuide(); }, 5 * 60000);
 })();
 </script>
 {{ end }}

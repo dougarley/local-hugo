@@ -5,16 +5,122 @@
     <h1 class="text-3xl font-bold text-text-primary">{{ .Title }}</h1>
   </div>
 
-  {{ with .TableOfContents }}
-  <nav class="toc mb-10 p-5 rounded-lg border border-border-subtle bg-surface-raised">
-    <p class="text-xs font-semibold uppercase tracking-widest text-text-faint mb-3">Contents</p>
-    {{ . }}
-  </nav>
+  {{ with .Params.lan_games }}
+  <section class="mb-12">
+    <h2 class="text-xl font-semibold text-text-primary mb-5">Current LAN Games</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {{ range . }}
+      {{ $game := . }}
+      <div class="card bg-base-200 border border-base-300">
+        {{ if $game.image }}
+        <figure class="h-40 overflow-hidden">
+          <img src="{{ $game.image }}" alt="{{ $game.name }}" class="w-full h-full object-cover" loading="lazy" />
+        </figure>
+        {{ else }}
+        <figure class="h-40 bg-base-300 flex items-center justify-center">
+          <span class="text-text-faint text-xs uppercase tracking-widest">No Cover Art</span>
+        </figure>
+        {{ end }}
+        <div class="card-body">
+          <h3 class="card-title text-text-primary">{{ $game.name }}</h3>
+          <p class="text-text-muted text-sm">{{ $game.description }}</p>
+          {{ with $game.server_address }}
+          <div class="mt-1">
+            <div class="join w-full">
+              <div class="join-item flex-1 bg-base-300 px-3 py-1.5 font-mono text-xs text-text-primary truncate self-center">{{ . }}</div>
+              <button type="button" class="join-item btn btn-sm btn-accent btn-outline copy-btn" data-copy="{{ . }}" aria-label="Copy server address">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M8 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2M8 7h7a2 2 0 0 1 2 2v7" />
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 check-icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+            </div>
+            {{ with $game.server_note }}<p class="text-text-faint text-xs mt-1">{{ . }}</p>{{ end }}
+          </div>
+          {{ end }}
+          {{ with $game.links }}
+          <div class="card-actions justify-end mt-2">
+            {{ range . }}
+            <a href="{{ .url }}" target="_blank" rel="noopener" class="btn btn-sm btn-accent btn-outline">{{ .label }}</a>
+            {{ end }}
+          </div>
+          {{ end }}
+        </div>
+      </div>
+      {{ end }}
+    </div>
+  </section>
   {{ end }}
 
-  {{ with .Content }}
-  <div class="content-body">{{ . }}</div>
+  {{ with .Params.other_servers }}
+  <section>
+    <h2 class="text-xl font-semibold text-text-primary mb-5">Other Dedicated Servers</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {{ range . }}
+      {{ $game := . }}
+      <div class="card bg-base-200 border border-base-300">
+        {{ if $game.image }}
+        <figure class="h-40 overflow-hidden">
+          <img src="{{ $game.image }}" alt="{{ $game.name }}" class="w-full h-full object-cover" loading="lazy" />
+        </figure>
+        {{ else }}
+        <figure class="h-40 bg-base-300 flex items-center justify-center">
+          <span class="text-text-faint text-xs uppercase tracking-widest">No Cover Art</span>
+        </figure>
+        {{ end }}
+        <div class="card-body">
+          <h3 class="card-title text-text-primary">{{ $game.name }}</h3>
+          {{ with $game.server_address }}
+          <div class="mt-1">
+            <div class="join w-full">
+              <div class="join-item flex-1 bg-base-300 px-3 py-1.5 font-mono text-xs text-text-primary truncate self-center">{{ . }}</div>
+              <button type="button" class="join-item btn btn-sm btn-accent btn-outline copy-btn" data-copy="{{ . }}" aria-label="Copy server address">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M8 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2M8 7h7a2 2 0 0 1 2 2v7" />
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 check-icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+            </div>
+            {{ with $game.server_note }}<p class="text-text-faint text-xs mt-1">{{ . }}</p>{{ end }}
+          </div>
+          {{ end }}
+        </div>
+      </div>
+      {{ end }}
+    </div>
+  </section>
   {{ end }}
 
 </div>
+
+<script>
+  (function () {
+    document.querySelectorAll('.copy-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var value = btn.dataset.copy;
+        navigator.clipboard.writeText(value).then(function () {
+          var copyIcon = btn.querySelector('.copy-icon');
+          var checkIcon = btn.querySelector('.check-icon');
+          copyIcon.classList.add('hidden');
+          checkIcon.classList.remove('hidden');
+          btn.classList.add('btn-success');
+          btn.classList.remove('btn-accent');
+          btn.setAttribute('aria-label', 'Copied');
+          clearTimeout(btn._copyResetTimer);
+          btn._copyResetTimer = setTimeout(function () {
+            copyIcon.classList.remove('hidden');
+            checkIcon.classList.add('hidden');
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-accent');
+            btn.setAttribute('aria-label', 'Copy server address');
+          }, 1500);
+        });
+      });
+    });
+  })();
+</script>
 {{ end }}

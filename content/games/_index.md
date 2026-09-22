@@ -1,63 +1,66 @@
 ---
 title: "Games"
+lan_games:
+  - name: "Dale & Dawson Stationery Supplies"
+    image: "https://cdn.akamai.steamstatic.com/steam/apps/2920570/header.jpg"
+    description: "A social deduction game set in an office where players take on roles as Manager, Specialists, or Slackers. Slackers blend in and mimic Specialists to avoid the Manager's suspicion — figure out who's actually doing their job before the day is over."
+    links:
+      - label: "Steam"
+        url: "https://store.steampowered.com/app/2920570/Dale__Dawson_Stationery_Supplies/"
+  - name: "Golf with Your Friends"
+    image: "https://cdn.akamai.steamstatic.com/steam/apps/431240/header.jpg"
+    description: "Chaotic multiplayer mini golf for up to 12 players. Nothing is out of bounds across themed courses packed with obstacles, power-ups, and custom level support."
+    links:
+      - label: "Steam"
+        url: "https://store.steampowered.com/app/431240/"
+  - name: "Last Train Outta Wormtown"
+    image: "https://cdn.akamai.steamstatic.com/steam/apps/2318480/header.jpg"
+    description: "Asymmetrical multiplayer where a team of Cowboys races to board an escaping train while one player controls a giant sandworm that can only detect people touching the ground. Stay off the dirt or get eaten."
+    links:
+      - label: "Steam"
+        url: "https://store.steampowered.com/app/2318480/Last_Train_Outta_Wormtown/"
+  - name: "Super Battle Golf"
+    image: "https://cdn2.steamgriddb.com/grid/012f9a382489b59aaa4f7172765fda80.jpg"
+    description: "Online golf for 1–8 players where everyone swings at the same time. Sabotage opponents with items and hazards across 45 courses in a chaotic free-for-all race to the hole."
+    links:
+      - label: "Steam"
+        url: "https://store.steampowered.com/app/4069520/Super_Battle_Golf/"
+  - name: "Unreal Tournament 2004"
+    image: "https://cdn.akamai.steamstatic.com/steam/apps/13230/header.jpg"
+    description: "The classic arena shooter with vehicles. Deathmatch, CTF, Onslaught, and more — fast, frantic, and still one of the best LAN games ever made."
+    links:
+      - label: "Steam"
+        url: "https://store.steampowered.com/app/13230/"
+    server_address: "192.168.1.234"
+    server_note: "Open the in-game server browser or use Open Location to direct-connect"
+  - name: "GoldenEye Source"
+    image: "https://cdn2.steamgriddb.com/grid/405263e8db137517d4eb9b068bf4c05c.png"
+    description: "A free fan-made multiplayer remake of GoldenEye 007 built on the Half-Life 2 Source engine. All 28 original weapons, 25 maps, and 10 game modes — no N64 required."
+    links:
+      - label: "geshl2.com"
+        url: "https://geshl2.com"
+    server_address: "192.168.1.234:27015"
+    server_note: "Use Find Servers → LAN or direct-connect in the Source engine browser"
+  - name: "Gunbound Thor's Hammer"
+    image: ""
+    description: "Turn-based artillery multiplayer in the style of Worms. Pick a mobile (vehicle), adjust your angle and power, and account for wind as you lob shots at the opposing team. Free-to-play classic from the early 2000s."
+    links: []
+    server_address: "192.168.1.234:8360"
+other_servers:
+  - name: "Satisfactory"
+    image: "https://cdn.akamai.steamstatic.com/steam/apps/526870/header.jpg"
+    server_address: "192.168.1.234:7777"
+    server_note: "Join via Manage Sessions → Join Game and enter the server IP"
+  - name: "Valheim"
+    image: "https://cdn.akamai.steamstatic.com/steam/apps/892970/header.jpg"
+    server_address: "192.168.1.234:2459"
+    server_note: "Join via Join Game → Add server in the server browser"
+  - name: "Valheim (modded)"
+    image: "https://cdn.akamai.steamstatic.com/steam/apps/892970/header.jpg"
+    server_address: "192.168.1.234:2456"
+    server_note: "Requires matching mods installed via Thunderstore/r2modman"
+  - name: "Windrose"
+    image: "https://cdn.akamai.steamstatic.com/steam/apps/3041230/header.jpg"
+    server_address: "192.168.1.234:7777"
+    server_note: "Enter the server IP in the in-game join screen"
 ---
-
-## Current LAN Games
-
-### Dale & Dawson Stationery Supplies [[Steam]](https://store.steampowered.com/app/2920570/Dale__Dawson_Stationery_Supplies/)
-
-A social deduction game set in an office where players take on roles as Manager, Specialists, or Slackers. Slackers blend in and mimic Specialists to avoid the Manager's suspicion — figure out who's actually doing their job before the day is over.
-
-### Golf with Your Friends [[Steam]](https://store.steampowered.com/app/431240/)
-
-Chaotic multiplayer mini golf for up to 12 players. Nothing is out of bounds across themed courses packed with obstacles, power-ups, and custom level support.
-
-### Last Train Outta Wormtown [[Steam]](https://store.steampowered.com/app/2318480/Last_Train_Outta_Wormtown/)
-
-Asymmetrical multiplayer where a team of Cowboys races to board an escaping train while one player controls a giant sandworm that can only detect people touching the ground. Stay off the dirt or get eaten.
-
-### Super Battle Golf [[Steam]](https://store.steampowered.com/app/4069520/Super_Battle_Golf/)
-
-Online golf for 1–8 players where everyone swings at the same time. Sabotage opponents with items and hazards across 45 courses in a chaotic free-for-all race to the hole.
-
-### Unreal Tournament 2004 [[Steam]](https://store.steampowered.com/app/13230/)[[Local]]()
-
-The classic arena shooter with vehicles. Deathmatch, CTF, Onslaught, and more — fast, frantic, and still one of the best LAN games ever made.
-
-#### Server info
-
-- **Address:** `192.168.1.234` — open the in-game server browser or use *Open Location* to direct-connect
-
-### GoldenEye Source [[geshl2.com]](https://geshl2.com)
-
-A free fan-made multiplayer remake of GoldenEye 007 built on the Half-Life 2 Source engine. All 28 original weapons, 25 maps, and 10 game modes — no N64 required.
-
-#### Server info
-
-- **Address:** `192.168.1.234:27015` — use *Find Servers → LAN* or direct-connect in the Source engine browser
-
-### Gunbound Thor's Hammer [[Local]]()
-
-Turn-based artillery multiplayer in the style of Worms. Pick a mobile (vehicle), adjust your angle and power, and account for wind as you lob shots at the opposing team. Free-to-play classic from the early 2000s.
-
-#### Server info
-
-- **Server:** `192.168.1.234:8360`
-
-## Other Dedicated Servers
-
-### Satisfactory
-
-- **Address:** `192.168.1.234:7777` — join via *Manage Sessions → Join Game* and enter the server IP
-
-### Valheim
-
-- **Address:** `192.168.1.234:2459` — join via *Join Game → Add server* in the server browser
-
-### Valheim (modded)
-
-- **Address:** `192.168.1.234:2456` — requires matching mods installed via Thunderstore/r2modman
-
-### Windrose
-
-- **Address:** `192.168.1.234:7777` — enter the server IP in the in-game join screen
