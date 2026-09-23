@@ -560,6 +560,7 @@
   let musicQueue = [];
   let musicPos = 0;
   let musicErrors = 0;
+  let trackLabel = '';
 
   function shuffled(arr) {
     const a = arr.slice();
@@ -744,8 +745,30 @@
     if (musicPos >= musicQueue.length) { musicQueue = shuffled(MUSIC_TRACKS); musicPos = 0; }
     const name = musicQueue[musicPos];
     vAudio.src = `/music/${encodeURIComponent(name)}`;
-    vTrack.textContent = `Now playing: ${name.replace(/\.mp3$/i, '')}`;
-    vAudio.play().catch(err => console.warn('Music blocked:', err.message));
+    trackLabel = `Now playing: ${name.replace(/\.mp3$/i, '')}`;
+    vTrack.textContent = trackLabel;
+    vAudio.play().catch(err => {
+      if (err.name === 'NotAllowedError') waitForGestureToPlay();
+      else console.warn('Music failed to start:', err.message);
+    });
+  }
+
+  // Browsers block audio until the user interacts with the page, which is the
+  // normal case when channel 0 auto-loads. Start the music on the first click/key.
+  let gestureListening = false;
+  function waitForGestureToPlay() {
+    vTrack.textContent = 'Click anywhere to start the music';
+    if (gestureListening) return;
+    gestureListening = true;
+    const start = () => {
+      document.removeEventListener('pointerdown', start);
+      document.removeEventListener('keydown', start);
+      gestureListening = false;
+      if (vScreen.classList.contains('hidden') || !vAudio.getAttribute('src')) return;
+      vAudio.play().then(() => { vTrack.textContent = trackLabel; }).catch(() => {});
+    };
+    document.addEventListener('pointerdown', start);
+    document.addEventListener('keydown', start);
   }
 
   vAudio.addEventListener('playing', () => { musicErrors = 0; });
@@ -859,6 +882,7 @@
       renderChannelSidebar();
       renderEPG();
       loadGuide();
+      play(VIRTUAL_CHANNEL);
     } catch (err) {
       list.innerHTML = `
         <li class="px-3 py-2 text-xs space-y-1">
