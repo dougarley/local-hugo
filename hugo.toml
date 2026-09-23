@@ -12,6 +12,7 @@ title = "LAN Hub"
 #   HUGO_PARAMS_WEATHERLAT  = 40.7128
 #   HUGO_PARAMS_WEATHERLON  = -74.0060
 #   HUGO_PARAMS_WEATHERLABEL = Your Town, ST
+#   HUGO_PARAMS_RADARSTATION = KDIX   (optional; defaults to the nearest NWS radar)
 
 [params]
   tunarrURL    = ""
@@ -21,3 +22,4 @@ title = "LAN Hub"
   weatherLat   = ""
   weatherLon   = ""
   weatherLabel = ""
+  radarStation = ""

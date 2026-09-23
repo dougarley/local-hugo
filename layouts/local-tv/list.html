@@ -63,25 +63,33 @@
           </div>
 
           <section id="v-weather" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
-            <div class="h-full flex flex-col items-center justify-center text-center" style="padding:11cqh 4cqw 10cqh;gap:1.5cqh">
-              <p id="w-loc" class="uppercase tracking-widest text-text-muted" style="font-size:4.5cqh"></p>
-              <p id="w-temp" class="font-bold text-text-primary leading-none" style="font-size:24cqh"></p>
-              <p id="w-desc" class="text-accent" style="font-size:6.5cqh"></p>
-              <p id="w-details" class="text-text-muted" style="font-size:4.2cqh"></p>
-              <div id="w-forecast" class="flex justify-center text-text-muted" style="gap:4cqw;font-size:3.8cqh;margin-top:1cqh"></div>
+            <div class="h-full flex items-center justify-center" style="padding:11cqh 3cqw 10cqh;gap:3cqw">
+              <div class="min-w-0 flex-1 flex flex-col items-center justify-center text-center" style="gap:1.5cqh">
+                <p id="w-loc" class="uppercase tracking-widest text-text-muted" style="font-size:4.5cqh"></p>
+                <p id="w-temp" class="font-bold text-text-primary leading-none" style="font-size:24cqh"></p>
+                <p id="w-desc" class="text-accent" style="font-size:6.5cqh"></p>
+                <p id="w-details" class="text-text-muted" style="font-size:4.2cqh"></p>
+                <div id="w-forecast" class="flex flex-wrap justify-center text-text-muted" style="gap:0.5cqh 3cqw;font-size:3.8cqh;margin-top:1cqh"></div>
+              </div>
+              <!-- Latest NWS radar for the nearest station (US only); hidden if unavailable -->
+              <div id="w-radar-wrap" class="shrink-0 h-full" style="display:none;aspect-ratio:600/550">
+                <img id="w-radar" alt="Local weather radar" class="w-full h-full object-contain rounded-lg bg-surface-overlay">
+              </div>
             </div>
           </section>
 
           <section id="v-game" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
             <div class="h-full flex" style="padding:11cqh 3cqw 10cqh;gap:3cqw">
-              <div class="shrink-0 rounded-lg overflow-hidden bg-surface-overlay flex items-center justify-center" style="width:46%">
-                <img id="g-img" alt="" class="w-full h-full object-cover">
+              <!-- Game art is 460x215; show it whole (no cropping), sized by width and capped by height -->
+              <div class="shrink-0 self-center rounded-lg overflow-hidden bg-surface-overlay flex items-center justify-center"
+                   style="width:48%;aspect-ratio:460/215;max-height:100%">
+                <img id="g-img" alt="" class="w-full h-full object-contain">
                 <span id="g-img-fallback" class="text-text-faint uppercase tracking-widest" style="display:none;font-size:3.5cqh">No Cover Art</span>
               </div>
               <div class="min-w-0 flex-1 flex flex-col justify-center" style="gap:1.5cqh">
                 <p class="uppercase tracking-widest text-accent" style="font-size:3.5cqh">In the LAN lineup</p>
                 <h2 id="g-name" class="font-bold text-text-primary" style="font-size:8cqh;line-height:1.15"></h2>
-                <p id="g-desc" class="text-text-muted line-clamp-5" style="font-size:4.2cqh;line-height:1.35"></p>
+                <p id="g-desc" class="text-text-muted line-clamp-6" style="font-size:4.2cqh;line-height:1.35"></p>
                 <p id="g-server" class="font-mono text-text-primary" style="font-size:3.6cqh"></p>
               </div>
             </div>
@@ -200,6 +208,8 @@
   const WEATHER_LAT   = parseFloat("{{ .Site.Params.weatherLat }}");
   const WEATHER_LON   = parseFloat("{{ .Site.Params.weatherLon }}");
   const WEATHER_LABEL = "{{ .Site.Params.weatherLabel }}";
+  const RADAR_STATION_OVERRIDE = "{{ .Site.Params.radarStation }}".trim().toUpperCase(); // optional, e.g. KDIX
+  const RADAR_TTL_MS = 5 * 60000;        // NWS refreshes radar every few minutes
   const IMMICH = "{{ $immich }}";
   const ALBUM  = "{{ $album }}";
   const KEY    = "{{ $key }}";
@@ -625,6 +635,42 @@
     return hit ? hit[1] : 'Unknown';
   }
 
+  // Nearest NWS radar station for the configured lat/lon (weather.gov, US only, CORS-enabled)
+  const STATION_RE = /^[A-Z0-9]{3,4}$/;
+  let radarStation = null;
+  let radarStationTriedAt = 0;
+  async function resolveRadarStation() {
+    if (STATION_RE.test(RADAR_STATION_OVERRIDE)) return RADAR_STATION_OVERRIDE;
+    if (radarStation) return radarStation;
+    if (Date.now() - radarStationTriedAt < 30 * 60000) return null; // recently failed (e.g. outside the US)
+    radarStationTriedAt = Date.now();
+    try {
+      const res = await fetch(`https://api.weather.gov/points/${WEATHER_LAT},${WEATHER_LON}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const station = String((await res.json()).properties?.radarStation || '').toUpperCase();
+      if (STATION_RE.test(station)) radarStation = station;
+    } catch (err) {
+      console.warn('Radar station lookup failed:', err.message);
+    }
+    return radarStation;
+  }
+
+  async function loadRadar() {
+    const wrap = document.getElementById('w-radar-wrap');
+    let ok = false;
+    try {
+      const station = await resolveRadarStation();
+      if (station) {
+        const bucket = Math.floor(Date.now() / RADAR_TTL_MS); // cache-bust once per refresh interval
+        ok = await waitForImage(document.getElementById('w-radar'),
+          `https://radar.weather.gov/ridge/standard/${station}_0.gif?t=${bucket}`);
+      }
+    } catch (err) {
+      console.warn('Radar unavailable:', err.message);
+    }
+    wrap.style.display = ok ? '' : 'none';
+  }
+
   async function prepareWeather() {
     if (!Number.isFinite(WEATHER_LAT) || !Number.isFinite(WEATHER_LON)) return false;
     if (!weatherCache || Date.now() - weatherCache.at > WEATHER_TTL_MS) {
@@ -659,6 +705,7 @@
       cell.textContent = `${day}: ${Math.round(daily.temperature_2m_max[i])}°/${Math.round(daily.temperature_2m_min[i])}° ${describeWeather(daily.weather_code[i])}`;
       forecast.appendChild(cell);
     }
+    await loadRadar();
     return true;
   }
 

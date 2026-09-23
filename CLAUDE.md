@@ -40,6 +40,7 @@ Hugo reads `HUGO_PARAMS_*` automatically:
 | `HUGO_PARAMS_WEATHERLAT` | Latitude for the Local TV channel 0 weather screen |
 | `HUGO_PARAMS_WEATHERLON` | Longitude for the weather screen |
 | `HUGO_PARAMS_WEATHERLABEL` | Display name shown on the weather screen (e.g. "Town, ST") |
+| `HUGO_PARAMS_RADARSTATION` | Optional NWS radar station (e.g. `KDIX`); defaults to the nearest to the lat/lon (US only) |
 
 Never hardcode these values in `hugo.toml` or templates.
 
