@@ -81,11 +81,11 @@
   const ROW_HEIGHT_PX    = 56; // matches h-14 channel/programme rows
   const HEADER_HEIGHT_PX = 40; // matches h-10 time-ticks header row
 
-  // Auto-scroll: pause length between rows, and how long to ignore scroll
-  // events while our own smooth-scroll animation is still moving (so we
-  // don't mistake it for the user grabbing the scrollbar).
-  const AUTOSCROLL_PAUSE_MS = 2500;
-  const AUTOSCROLL_ANIM_MS  = 500;
+  // Auto-scroll: AUTOSCROLL_ANIM_MS is how long the slow glide to the next
+  // row takes; AUTOSCROLL_PAUSE_MS is the total time between the start of
+  // one row's glide and the next (so the stationary pause is PAUSE - ANIM).
+  const AUTOSCROLL_ANIM_MS  = 1800;
+  const AUTOSCROLL_PAUSE_MS = 4200;
 
   const video          = document.getElementById('tv-player');
   const list           = document.getElementById('channel-list');
@@ -314,9 +314,25 @@
     }
 
     suppressScrollEvents = true;
-    epgScroll.scrollTo({ top: target, behavior: 'smooth' });
-    setTimeout(() => { suppressScrollEvents = false; }, AUTOSCROLL_ANIM_MS);
+    animateScrollTop(epgScroll, target, AUTOSCROLL_ANIM_MS, () => { suppressScrollEvents = false; });
     autoScrollTimer = setTimeout(autoScrollStep, AUTOSCROLL_PAUSE_MS);
+  }
+
+  // Native scrollTo({behavior:'smooth'}) is fast and its duration isn't
+  // controllable, so drive the glide manually for a slow, even creep.
+  function animateScrollTop(el, target, duration, onDone) {
+    const start = el.scrollTop;
+    const delta = target - start;
+    if (delta === 0) { onDone?.(); return; }
+    const startTime = performance.now();
+    const easeInOutQuad = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+    function step(now) {
+      const t = Math.min((now - startTime) / duration, 1);
+      el.scrollTop = start + delta * easeInOutQuad(t);
+      if (t < 1) requestAnimationFrame(step);
+      else onDone?.();
+    }
+    requestAnimationFrame(step);
   }
 
   epgAutoscrollToggle.addEventListener('click', () => setAutoScroll(!autoScrollEnabled));
