@@ -27,3 +27,7 @@ node_modules/
 
 # Claude Code local settings (contains NAS password in allowed commands)
 .claude/settings.local.json
+
+# Local MP3s for the Local TV virtual channel 0 (folder kept, files ignored)
+static/music/*
+!static/music/.gitkeep

@@ -9,9 +9,15 @@ title = "LAN Hub"
 #   HUGO_PARAMS_IMMICHURL   = http://your-immich-url
 #   HUGO_PARAMS_IMMICHALBUM = your-album-id
 #   HUGO_PARAMS_IMMICHKEY   = your-api-key
+#   HUGO_PARAMS_WEATHERLAT  = 40.7128
+#   HUGO_PARAMS_WEATHERLON  = -74.0060
+#   HUGO_PARAMS_WEATHERLABEL = Your Town, ST
 
 [params]
-  tunarrURL   = ""
-  immichURL   = ""
-  immichAlbum = ""
-  immichKey   = ""
+  tunarrURL    = ""
+  immichURL    = ""
+  immichAlbum  = ""
+  immichKey    = ""
+  weatherLat   = ""
+  weatherLon   = ""
+  weatherLabel = ""

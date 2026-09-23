@@ -1,5 +1,19 @@
 {{ define "main" }}
 {{ $tunarr := .Site.Params.tunarrURL }}
+{{ $immich := .Site.Params.immichURL }}
+{{ $album  := .Site.Params.immichAlbum }}
+{{ $key    := .Site.Params.immichKey }}
+
+{{/* Virtual channel 0 inputs: LAN games from the games page, MP3s from static/music */}}
+{{ $games := slice }}
+{{ with .Site.GetPage "/games" }}{{ with .Params.lan_games }}{{ $games = . }}{{ end }}{{ end }}
+{{ $tracks := slice }}
+{{ if os.FileExists "static/music" }}
+  {{ range os.ReadDir "static/music" }}
+    {{ if and (not .IsDir) (strings.HasSuffix (lower .Name) ".mp3") }}{{ $tracks = $tracks | append .Name }}{{ end }}
+  {{ end }}
+{{ end }}
+
 <div class="flex flex-col h-full overflow-hidden">
 
   <!-- Top: player + channel list -->
@@ -7,8 +21,64 @@
 
     <!-- Player -->
     <div class="flex-1 min-w-0 flex flex-col overflow-hidden p-6 gap-4">
-      <div class="w-full flex-1 min-h-0 bg-black rounded-lg overflow-hidden">
+      <div class="relative w-full flex-1 min-h-0 bg-black rounded-lg overflow-hidden">
         <video id="tv-player" class="w-full h-full object-contain" controls playsinline></video>
+
+        <!-- Virtual channel 0: rotating info screens (weather / LAN game / photos) -->
+        <div id="virtual-screen" class="hidden absolute inset-0 bg-surface-base overflow-hidden" style="container-type:size">
+
+          <div class="absolute top-0 inset-x-0 z-20 flex items-center justify-between bg-surface-raised border-b border-border-default"
+               style="height:9cqh;padding:0 2cqw;font-size:3.6cqh">
+            <span class="uppercase tracking-widest text-text-muted">CH 0 &middot; Local Info</span>
+            <div class="flex items-center gap-2">
+              <span id="v-clock" class="text-text-primary"></span>
+              <button id="v-mute" type="button" class="btn btn-xs btn-ghost text-text-muted">Mute</button>
+              <button id="v-fullscreen" type="button" class="btn btn-xs btn-ghost text-text-muted">Fullscreen</button>
+            </div>
+          </div>
+
+          <section id="v-weather" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
+            <div class="h-full flex flex-col items-center justify-center text-center" style="padding:11cqh 4cqw 10cqh;gap:1.5cqh">
+              <p id="w-loc" class="uppercase tracking-widest text-text-muted" style="font-size:4.5cqh"></p>
+              <p id="w-temp" class="font-bold text-text-primary leading-none" style="font-size:24cqh"></p>
+              <p id="w-desc" class="text-accent" style="font-size:6.5cqh"></p>
+              <p id="w-details" class="text-text-muted" style="font-size:4.2cqh"></p>
+              <div id="w-forecast" class="flex justify-center text-text-muted" style="gap:4cqw;font-size:3.8cqh;margin-top:1cqh"></div>
+            </div>
+          </section>
+
+          <section id="v-game" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
+            <div class="h-full flex" style="padding:11cqh 3cqw 10cqh;gap:3cqw">
+              <div class="shrink-0 rounded-lg overflow-hidden bg-surface-overlay flex items-center justify-center" style="width:46%">
+                <img id="g-img" alt="" class="w-full h-full object-cover">
+                <span id="g-img-fallback" class="text-text-faint uppercase tracking-widest" style="display:none;font-size:3.5cqh">No Cover Art</span>
+              </div>
+              <div class="min-w-0 flex-1 flex flex-col justify-center" style="gap:1.5cqh">
+                <p class="uppercase tracking-widest text-accent" style="font-size:3.5cqh">In the LAN lineup</p>
+                <h2 id="g-name" class="font-bold text-text-primary" style="font-size:8cqh;line-height:1.15"></h2>
+                <p id="g-desc" class="text-text-muted line-clamp-5" style="font-size:4.2cqh;line-height:1.35"></p>
+                <p id="g-server" class="font-mono text-text-primary" style="font-size:3.6cqh"></p>
+              </div>
+            </div>
+          </section>
+
+          <section id="v-photos" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
+            <div class="h-full flex flex-col" style="padding:11cqh 3cqw 10cqh;gap:1.5cqh">
+              <p class="uppercase tracking-widest text-accent" style="font-size:3.5cqh">From the photo gallery</p>
+              <div id="p-grid" class="flex-1 min-h-0 grid" style="gap:1.5cqh 1.5cqw"></div>
+              <div id="p-fallback" class="flex-1 min-h-0 flex-col items-center justify-center text-center bg-surface-raised rounded-lg border border-border-default" style="display:none;gap:1.5cqh">
+                <p class="text-text-primary font-semibold" style="font-size:6cqh">No photos to show yet</p>
+                <p class="text-text-muted" style="font-size:4cqh">Add pictures to the shared album and they will appear here.</p>
+              </div>
+            </div>
+          </section>
+
+          <div class="absolute bottom-0 inset-x-0 z-20 flex items-center bg-surface-raised border-t border-border-default text-text-muted"
+               style="height:8cqh;padding:0 2cqw;font-size:3.4cqh">
+            <span id="v-track" class="truncate"></span>
+          </div>
+        </div>
+        <audio id="v-audio" preload="auto"></audio>
       </div>
       <div class="flex items-start justify-between gap-4 min-w-0 shrink-0">
         <div id="now-playing" class="min-w-0 text-text-faint text-sm">Select a channel to begin.</div>
@@ -87,6 +157,22 @@
   const AUTOSCROLL_ANIM_MS  = 1800;
   const AUTOSCROLL_PAUSE_MS = 4200;
 
+  // ── Virtual channel 0 config ───────────────────────────────────
+  const VIRTUAL_CHANNEL  = { id: 'virtual-0', number: 0, name: 'Local Info', virtual: true };
+  const VIRTUAL_SUBTITLE = 'Weather, LAN games & photos';
+  const SCREEN_MS        = 15000;        // how long each info screen stays up
+  const WEATHER_TTL_MS   = 10 * 60000;   // reuse a weather fetch this long
+  const ALBUM_TTL_MS     = 10 * 60000;   // reuse the photo album listing this long
+  const MUSIC_VOLUME     = 0.6;
+  const WEATHER_LAT   = parseFloat("{{ .Site.Params.weatherLat }}");
+  const WEATHER_LON   = parseFloat("{{ .Site.Params.weatherLon }}");
+  const WEATHER_LABEL = "{{ .Site.Params.weatherLabel }}";
+  const IMMICH = "{{ $immich }}";
+  const ALBUM  = "{{ $album }}";
+  const KEY    = "{{ $key }}";
+  const LAN_GAMES    = {{ $games }};
+  const MUSIC_TRACKS = {{ $tracks }};
+
   const video          = document.getElementById('tv-player');
   const list           = document.getElementById('channel-list');
   const nowPlaying      = document.getElementById('now-playing');
@@ -103,6 +189,7 @@
   const epgNowLabel       = document.getElementById('epg-now-label');
 
   let hls = null;
+  let retryTimer = null;
   let channels = [];
   let activeChannel = null;
   let programsByChannel = {}; // tunarr channel id -> [{start, stop, title}]
@@ -110,6 +197,7 @@
   let autoScrollEnabled = false;
   let autoScrollTimer = null;
   let suppressScrollEvents = false;
+  let autoScrollRow = 0; // 0-indexed row within the doubled (primary + duplicate) row set
 
   function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, c => ({
@@ -182,6 +270,7 @@
   }
 
   function currentProgram(ch) {
+    if (ch.virtual) return { title: VIRTUAL_SUBTITLE };
     const progs = programsByChannel[ch.id];
     if (!progs) return null;
     const now = Date.now();
@@ -212,6 +301,52 @@
     return new Date(aligned - ms30);
   }
 
+  function buildEPGRow(ch, windowStart, windowEnd, now) {
+    const nameCell = document.createElement('div');
+    nameCell.className = 'sticky left-0 z-10 bg-surface-raised border-b border-r border-border-default h-14 flex items-center gap-2 px-3 min-w-0';
+    nameCell.innerHTML = `
+      ${iconHTML(ch, 'w-6 h-6')}
+      <div class="min-w-0">
+        <p class="text-xs text-text-primary truncate">${escapeHtml(ch.name)}</p>
+        <p class="text-[10px] text-text-faint">CH ${ch.number}</p>
+      </div>`;
+
+    const timelineCell = document.createElement('div');
+    timelineCell.className = 'relative h-14 border-b border-border-default';
+
+    const progs = ch.virtual
+      ? [{ start: windowStart, stop: windowEnd, title: `Local Info: ${VIRTUAL_SUBTITLE}` }]
+      : (programsByChannel[ch.id] || []);
+    let blocksHTML = '';
+    progs.forEach(p => {
+      const start = p.start < windowStart ? windowStart : p.start;
+      const stop  = p.stop > windowEnd ? windowEnd : p.stop;
+      if (stop <= start) return;
+      const left  = (start - windowStart) / 60000 * PX_PER_MIN;
+      const width = Math.max((stop - start) / 60000 * PX_PER_MIN, 3);
+      const isNow = p.start <= now && now < p.stop;
+      blocksHTML += `
+        <button type="button"
+                class="epg-block absolute top-1 bottom-1 rounded px-2 text-left text-xs overflow-hidden transition-colors ${isNow
+                  ? 'bg-accent-subtle text-accent border border-accent'
+                  : 'bg-surface-overlay text-text-muted border border-border-default hover:text-text-primary hover:border-text-faint'}"
+                style="left:${left}px;width:${width}px"
+                data-channel="${ch.id}"
+                title="${escapeHtml(p.title)}${ch.virtual ? '' : ` (${formatHM(p.start)}–${formatHM(p.stop)})`}">
+          <span class="block truncate font-medium">${escapeHtml(p.title)}</span>
+        </button>`;
+    });
+    timelineCell.innerHTML = blocksHTML || '<span class="absolute inset-0 flex items-center px-3 text-[11px] text-text-faint italic">No guide data</span>';
+    timelineCell.querySelectorAll('.epg-block').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = channels.find(c => c.id === btn.dataset.channel);
+        if (target) play(target);
+      });
+    });
+
+    return [nameCell, timelineCell];
+  }
+
   function renderEPG() {
     if (!channels.length) return;
     epgRowsPlaceholder.remove();
@@ -232,52 +367,19 @@
     epgRowEls.forEach(el => el.remove());
     epgRowEls = [];
 
+    // Render the channel list twice, back-to-back, so auto-scroll can glide
+    // straight from the last row into a pixel-identical duplicate of the
+    // first — then snap back by one set height once it's out of view,
+    // instead of jumping visibly back to the top.
     const frag = document.createDocumentFragment();
-    channels.forEach(ch => {
-      const nameCell = document.createElement('div');
-      nameCell.className = 'sticky left-0 z-10 bg-surface-raised border-b border-r border-border-default h-14 flex items-center gap-2 px-3 min-w-0';
-      nameCell.innerHTML = `
-        ${iconHTML(ch, 'w-6 h-6')}
-        <div class="min-w-0">
-          <p class="text-xs text-text-primary truncate">${escapeHtml(ch.name)}</p>
-          <p class="text-[10px] text-text-faint">CH ${ch.number}</p>
-        </div>`;
-
-      const timelineCell = document.createElement('div');
-      timelineCell.className = 'relative h-14 border-b border-border-default';
-
-      const progs = programsByChannel[ch.id] || [];
-      let blocksHTML = '';
-      progs.forEach(p => {
-        const start = p.start < windowStart ? windowStart : p.start;
-        const stop  = p.stop > windowEnd ? windowEnd : p.stop;
-        if (stop <= start) return;
-        const left  = (start - windowStart) / 60000 * PX_PER_MIN;
-        const width = Math.max((stop - start) / 60000 * PX_PER_MIN, 3);
-        const isNow = p.start <= now && now < p.stop;
-        blocksHTML += `
-          <button type="button"
-                  class="epg-block absolute top-1 bottom-1 rounded px-2 text-left text-xs overflow-hidden transition-colors ${isNow
-                    ? 'bg-accent-subtle text-accent border border-accent'
-                    : 'bg-surface-overlay text-text-muted border border-border-default hover:text-text-primary hover:border-text-faint'}"
-                  style="left:${left}px;width:${width}px"
-                  data-channel="${ch.id}"
-                  title="${escapeHtml(p.title)} (${formatHM(p.start)}–${formatHM(p.stop)})">
-            <span class="block truncate font-medium">${escapeHtml(p.title)}</span>
-          </button>`;
+    for (let copy = 0; copy < 2; copy++) {
+      channels.forEach(ch => {
+        const [nameCell, timelineCell] = buildEPGRow(ch, windowStart, windowEnd, now);
+        frag.appendChild(nameCell);
+        frag.appendChild(timelineCell);
+        epgRowEls.push(nameCell, timelineCell);
       });
-      timelineCell.innerHTML = blocksHTML || '<span class="absolute inset-0 flex items-center px-3 text-[11px] text-text-faint italic">No guide data</span>';
-      timelineCell.querySelectorAll('.epg-block').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const target = channels.find(c => c.id === btn.dataset.channel);
-          if (target) play(target);
-        });
-      });
-
-      frag.appendChild(nameCell);
-      frag.appendChild(timelineCell);
-      epgRowEls.push(nameCell, timelineCell);
-    });
+    }
     epgGrid.appendChild(frag);
 
     const nowLeft = (now - windowStart) / 60000 * PX_PER_MIN;
@@ -290,31 +392,36 @@
   });
 
   // ── EPG auto-scroll (one row at a time, with a pause between) ──
+  // The grid renders every channel twice, back-to-back (see renderEPG), so
+  // once we glide past the last "real" row we're looking at a pixel-identical
+  // duplicate of row 1 — at that point we snap scrollTop back by one full
+  // set, invisibly, instead of visibly jumping to the top.
   function setAutoScroll(on) {
     autoScrollEnabled = on;
     epgAutoscrollToggle.textContent = `Auto-Scroll: ${on ? 'On' : 'Off'}`;
     epgAutoscrollToggle.classList.toggle('text-accent', on);
     epgAutoscrollToggle.classList.toggle('text-text-muted', !on);
     clearTimeout(autoScrollTimer);
-    if (on) autoScrollStep();
+    if (on) {
+      autoScrollRow = Math.max(0, Math.round((epgScroll.scrollTop - HEADER_HEIGHT_PX) / ROW_HEIGHT_PX));
+      autoScrollStep();
+    }
   }
 
   function autoScrollStep() {
-    if (!autoScrollEnabled) return;
-    const maxScroll = epgScroll.scrollHeight - epgScroll.clientHeight;
-    const current = epgScroll.scrollTop;
-    let target;
-    if (maxScroll <= 0) {
-      return; // nothing to scroll (guide fits on screen)
-    } else if (current >= maxScroll - 2) {
-      target = 0; // looped past the last row — reset to the top
-    } else {
-      const rowIndex = Math.round((current - HEADER_HEIGHT_PX) / ROW_HEIGHT_PX) + 1;
-      target = Math.min(HEADER_HEIGHT_PX + rowIndex * ROW_HEIGHT_PX, maxScroll);
-    }
+    if (!autoScrollEnabled || !channels.length) return;
+    const rowCount = channels.length;
+    autoScrollRow += 1;
+    const target = HEADER_HEIGHT_PX + autoScrollRow * ROW_HEIGHT_PX;
 
     suppressScrollEvents = true;
-    animateScrollTop(epgScroll, target, AUTOSCROLL_ANIM_MS, () => { suppressScrollEvents = false; });
+    animateScrollTop(epgScroll, target, AUTOSCROLL_ANIM_MS, () => {
+      if (autoScrollRow >= rowCount) {
+        autoScrollRow -= rowCount;
+        epgScroll.scrollTop = HEADER_HEIGHT_PX + autoScrollRow * ROW_HEIGHT_PX;
+      }
+      suppressScrollEvents = false;
+    });
     autoScrollTimer = setTimeout(autoScrollStep, AUTOSCROLL_PAUSE_MS);
   }
 
@@ -362,10 +469,21 @@
   function play(channel) {
     activeChannel = channel;
     const url = `${TUNARR}/stream/channels/${channel.id}.m3u8`;
-    let retryTimer = null;
 
     if (hls) { hls.destroy(); hls = null; }
-    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+    clearTimeout(retryTimer);
+
+    if (channel.virtual) {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      copyStreamBtn.classList.add('hidden');
+      updateNowPlayingText(channel);
+      setActive(channel.id);
+      startVirtual();
+      return;
+    }
+    stopVirtual();
 
     if (Hls.isSupported()) {
       hls = new Hls({
@@ -387,7 +505,7 @@
             `<span class="text-text-primary font-medium">${channel.number}. ${escapeHtml(channel.name)}</span>`
             + ` <span class="text-text-faint text-xs ml-2">Stream starting… retrying</span>`;
           hls.destroy(); hls = null;
-          retryTimer = setTimeout(() => play(channel), 4000);
+          retryTimer = setTimeout(() => { if (activeChannel === channel) play(channel); }, 4000);
         }
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -410,6 +528,265 @@
       clearTimeout(copyStreamBtn._resetTimer);
       copyStreamBtn._resetTimer = setTimeout(() => { copyStreamBtn.textContent = 'Copy Stream Link'; }, 1500);
     });
+  });
+
+  // ── Virtual channel 0: rotating info screens + shuffled music ──
+  const vScreen     = document.getElementById('virtual-screen');
+  const vAudio      = document.getElementById('v-audio');
+  const vTrack      = document.getElementById('v-track');
+  const vClock      = document.getElementById('v-clock');
+  const vMute       = document.getElementById('v-mute');
+  const vFullscreen = document.getElementById('v-fullscreen');
+  vAudio.volume = MUSIC_VOLUME;
+
+  let virtualRun = 0;          // bumped on every start/stop so stale async work bails out
+  let virtualTimer = null;
+  let clockTimer = null;
+  let screenIndex = -1;
+  let lastGameIndex = -1;
+  let weatherCache = null;     // { at, data }
+  let albumCache = null;       // { at, assets }
+  let photoBlobUrls = [];
+  let musicQueue = [];
+  let musicPos = 0;
+  let musicErrors = 0;
+
+  function shuffled(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function waitForImage(img, src) {
+    return new Promise(resolve => {
+      const done = () => { clearTimeout(t); resolve(img.complete && img.naturalWidth > 0); };
+      const t = setTimeout(done, 5000);
+      img.onload = done;
+      img.onerror = done;
+      img.src = src;
+    });
+  }
+
+  // Weather (Open-Meteo: no API key, CORS-enabled)
+  const WEATHER_CODES = [
+    [[0], 'Clear sky'], [[1], 'Mainly clear'], [[2], 'Partly cloudy'], [[3], 'Overcast'],
+    [[45, 48], 'Fog'], [[51, 53, 55, 56, 57], 'Drizzle'], [[61, 63, 65, 66, 67], 'Rain'],
+    [[71, 73, 75, 77], 'Snow'], [[80, 81, 82], 'Rain showers'], [[85, 86], 'Snow showers'],
+    [[95, 96, 99], 'Thunderstorms'],
+  ];
+  function describeWeather(code) {
+    const hit = WEATHER_CODES.find(([codes]) => codes.includes(code));
+    return hit ? hit[1] : 'Unknown';
+  }
+
+  async function prepareWeather() {
+    if (!Number.isFinite(WEATHER_LAT) || !Number.isFinite(WEATHER_LON)) return false;
+    if (!weatherCache || Date.now() - weatherCache.at > WEATHER_TTL_MS) {
+      try {
+        const url = 'https://api.open-meteo.com/v1/forecast'
+          + `?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}`
+          + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m'
+          + '&daily=weather_code,temperature_2m_max,temperature_2m_min'
+          + '&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=4';
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        weatherCache = { at: Date.now(), data: await res.json() };
+      } catch (err) {
+        console.warn('Weather unavailable:', err.message);
+        if (!weatherCache) return false;
+      }
+    }
+    const { current: cur, daily } = weatherCache.data;
+    document.getElementById('w-loc').textContent = WEATHER_LABEL || 'Current weather';
+    document.getElementById('w-temp').textContent = `${Math.round(cur.temperature_2m)}°`;
+    document.getElementById('w-desc').textContent = describeWeather(cur.weather_code);
+    document.getElementById('w-details').textContent =
+      `High ${Math.round(daily.temperature_2m_max[0])}° / Low ${Math.round(daily.temperature_2m_min[0])}°`
+      + `  ·  Feels like ${Math.round(cur.apparent_temperature)}°`
+      + `  ·  Humidity ${Math.round(cur.relative_humidity_2m)}%`
+      + `  ·  Wind ${Math.round(cur.wind_speed_10m)} mph`;
+    const forecast = document.getElementById('w-forecast');
+    forecast.innerHTML = '';
+    for (let i = 1; i < daily.time.length; i++) {
+      const day = new Date(`${daily.time[i]}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' });
+      const cell = document.createElement('span');
+      cell.textContent = `${day}: ${Math.round(daily.temperature_2m_max[i])}°/${Math.round(daily.temperature_2m_min[i])}° ${describeWeather(daily.weather_code[i])}`;
+      forecast.appendChild(cell);
+    }
+    return true;
+  }
+
+  // Random game from the LAN lineup (content/games/_index.md)
+  async function prepareGame() {
+    if (!Array.isArray(LAN_GAMES) || !LAN_GAMES.length) return false;
+    let i;
+    do { i = Math.floor(Math.random() * LAN_GAMES.length); }
+    while (LAN_GAMES.length > 1 && i === lastGameIndex);
+    lastGameIndex = i;
+    const game = LAN_GAMES[i];
+
+    document.getElementById('g-name').textContent = game.name || '';
+    document.getElementById('g-desc').textContent = game.description || '';
+    document.getElementById('g-server').textContent = game.server_address ? `Server: ${game.server_address}` : '';
+
+    const img = document.getElementById('g-img');
+    const fallback = document.getElementById('g-img-fallback');
+    const loaded = game.image ? await waitForImage(img, game.image) : false;
+    img.style.display = loaded ? '' : 'none';
+    fallback.style.display = loaded ? 'none' : '';
+    return true;
+  }
+
+  // 3-4 random photos from the Immich album, or a fallback card
+  async function pickPhotoUrls(count) {
+    if (!IMMICH || !ALBUM || !KEY) return [];
+    const headers = { 'x-api-key': KEY };
+    if (!albumCache || Date.now() - albumCache.at > ALBUM_TTL_MS) {
+      const res = await fetch(`${IMMICH}/api/albums/${ALBUM}`, { headers });
+      if (!res.ok) throw new Error(`album HTTP ${res.status}`);
+      const album = await res.json();
+      albumCache = { at: Date.now(), assets: (album.assets || []).filter(a => a.type === 'IMAGE') };
+    }
+    const picks = shuffled(albumCache.assets).slice(0, count);
+    const results = await Promise.allSettled(picks.map(async asset => {
+      const res = await fetch(`${IMMICH}/api/assets/${asset.id}/thumbnail?size=preview`, { headers });
+      if (!res.ok) throw new Error(`thumbnail HTTP ${res.status}`);
+      return URL.createObjectURL(await res.blob());
+    }));
+    return results.filter(r => r.status === 'fulfilled').map(r => r.value);
+  }
+
+  async function preparePhotos() {
+    const grid = document.getElementById('p-grid');
+    const fallback = document.getElementById('p-fallback');
+    let urls = [];
+    try {
+      urls = await pickPhotoUrls(4);
+    } catch (err) {
+      console.warn('Photos unavailable:', err.message);
+    }
+    photoBlobUrls.forEach(u => URL.revokeObjectURL(u));
+    photoBlobUrls = urls;
+
+    if (!urls.length) {
+      grid.style.display = 'none';
+      fallback.style.display = 'flex';
+      return true;
+    }
+    fallback.style.display = 'none';
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = urls.length === 1 ? '1fr' : '1fr 1fr';
+    grid.style.gridTemplateRows = urls.length <= 2 ? '1fr' : '1fr 1fr';
+    grid.innerHTML = '';
+    const loads = urls.map((url, idx) => {
+      const cell = document.createElement('div');
+      cell.className = 'rounded-lg overflow-hidden bg-surface-overlay min-h-0';
+      if (urls.length === 3 && idx === 0) cell.style.gridRow = 'span 2';
+      const img = document.createElement('img');
+      img.alt = '';
+      img.className = 'w-full h-full object-cover';
+      cell.appendChild(img);
+      grid.appendChild(cell);
+      return waitForImage(img, url);
+    });
+    await Promise.all(loads);
+    return true;
+  }
+
+  const SCREENS = [
+    { id: 'v-weather', prepare: prepareWeather },
+    { id: 'v-game',    prepare: prepareGame },
+    { id: 'v-photos',  prepare: preparePhotos },
+  ];
+
+  function showScreen(activeId) {
+    SCREENS.forEach(s => {
+      const on = s.id === activeId;
+      const el = document.getElementById(s.id);
+      el.classList.toggle('opacity-100', on);
+      el.classList.toggle('opacity-0', !on);
+      el.classList.toggle('pointer-events-none', !on);
+    });
+  }
+
+  async function nextScreen(run) {
+    for (let tries = 0; tries < SCREENS.length; tries++) {
+      screenIndex = (screenIndex + 1) % SCREENS.length;
+      const screen = SCREENS[screenIndex];
+      let ok = false;
+      try { ok = await screen.prepare(); }
+      catch (err) { console.warn(`${screen.id} failed:`, err.message); }
+      if (run !== virtualRun) return;
+      if (ok) { showScreen(screen.id); break; }
+    }
+    virtualTimer = setTimeout(() => nextScreen(run), SCREEN_MS);
+  }
+
+  // Shuffled MP3 playlist from static/music, looping (reshuffled) forever
+  function playTrack() {
+    if (!MUSIC_TRACKS.length) { vTrack.textContent = ''; return; }
+    if (musicPos >= musicQueue.length) { musicQueue = shuffled(MUSIC_TRACKS); musicPos = 0; }
+    const name = musicQueue[musicPos];
+    vAudio.src = `/music/${encodeURIComponent(name)}`;
+    vTrack.textContent = `Now playing: ${name.replace(/\.mp3$/i, '')}`;
+    vAudio.play().catch(err => console.warn('Music blocked:', err.message));
+  }
+
+  vAudio.addEventListener('playing', () => { musicErrors = 0; });
+  vAudio.addEventListener('ended', () => { musicPos++; playTrack(); });
+  vAudio.addEventListener('error', () => {
+    if (!vAudio.getAttribute('src') || ++musicErrors >= MUSIC_TRACKS.length) return;
+    musicPos++;
+    playTrack();
+  });
+
+  function updateClock() {
+    vClock.textContent = `${new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}  ${formatHM(new Date())}`;
+  }
+
+  function startVirtual() {
+    haltVirtual();
+    const run = virtualRun;
+    video.classList.add('hidden');
+    vScreen.classList.remove('hidden');
+    showScreen(null);
+    screenIndex = -1;
+    musicErrors = 0;
+    musicQueue = shuffled(MUSIC_TRACKS);
+    musicPos = 0;
+    playTrack();
+    updateClock();
+    clockTimer = setInterval(updateClock, 10000);
+    nextScreen(run);
+  }
+
+  function haltVirtual() {
+    virtualRun++;
+    clearTimeout(virtualTimer);
+    clearInterval(clockTimer);
+    vAudio.pause();
+    vAudio.removeAttribute('src');
+    vAudio.load();
+  }
+
+  function stopVirtual() {
+    haltVirtual();
+    if (document.fullscreenElement === vScreen) document.exitFullscreen().catch(() => {});
+    vScreen.classList.add('hidden');
+    video.classList.remove('hidden');
+    vTrack.textContent = '';
+  }
+
+  vMute.addEventListener('click', () => {
+    vAudio.muted = !vAudio.muted;
+    vMute.textContent = vAudio.muted ? 'Unmute' : 'Mute';
+  });
+  vFullscreen.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else vScreen.requestFullscreen().catch(() => {});
   });
 
   // ── Channel sidebar ───────────────────────────────────────────
@@ -458,7 +835,7 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!data.length) throw new Error('No channels found');
-      channels = data.sort((a, b) => a.number - b.number);
+      channels = [VIRTUAL_CHANNEL, ...data.sort((a, b) => a.number - b.number)];
       renderChannelSidebar();
       renderEPG();
       loadGuide();
