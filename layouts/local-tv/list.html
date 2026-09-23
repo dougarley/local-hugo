@@ -32,6 +32,8 @@
             <span class="uppercase tracking-widest text-text-muted">CH 0 &middot; Local Info</span>
             <div class="flex items-center gap-2">
               <span id="v-clock" class="text-text-primary"></span>
+              <input id="v-volume" type="range" min="0" max="1" step="0.01" aria-label="Music volume"
+                     class="range range-xs range-primary w-24">
               <button id="v-mute" type="button" class="btn btn-xs btn-ghost text-text-muted">Mute</button>
               <button id="v-fullscreen" type="button" class="btn btn-xs btn-ghost text-text-muted">Fullscreen</button>
             </div>
@@ -537,7 +539,15 @@
   const vClock      = document.getElementById('v-clock');
   const vMute       = document.getElementById('v-mute');
   const vFullscreen = document.getElementById('v-fullscreen');
-  vAudio.volume = MUSIC_VOLUME;
+  const vVolume     = document.getElementById('v-volume');
+
+  let savedVolume = MUSIC_VOLUME;
+  try {
+    const stored = parseFloat(localStorage.getItem('localtv-volume'));
+    if (Number.isFinite(stored) && stored >= 0 && stored <= 1) savedVolume = stored;
+  } catch (_) { /* storage unavailable — use default */ }
+  vAudio.volume = savedVolume;
+  vVolume.value = savedVolume;
 
   let virtualRun = 0;          // bumped on every start/stop so stale async work bails out
   let virtualTimer = null;
@@ -727,7 +737,10 @@
 
   // Shuffled MP3 playlist from static/music, looping (reshuffled) forever
   function playTrack() {
-    if (!MUSIC_TRACKS.length) { vTrack.textContent = ''; return; }
+    if (!MUSIC_TRACKS.length) {
+      vTrack.textContent = 'No music found — add .mp3 files to static/music and restart Hugo';
+      return;
+    }
     if (musicPos >= musicQueue.length) { musicQueue = shuffled(MUSIC_TRACKS); musicPos = 0; }
     const name = musicQueue[musicPos];
     vAudio.src = `/music/${encodeURIComponent(name)}`;
@@ -780,9 +793,16 @@
     vTrack.textContent = '';
   }
 
-  vMute.addEventListener('click', () => {
-    vAudio.muted = !vAudio.muted;
-    vMute.textContent = vAudio.muted ? 'Unmute' : 'Mute';
+  function setMuted(muted) {
+    vAudio.muted = muted;
+    vMute.textContent = muted ? 'Unmute' : 'Mute';
+  }
+  vMute.addEventListener('click', () => setMuted(!vAudio.muted));
+  vVolume.addEventListener('input', () => {
+    const level = parseFloat(vVolume.value);
+    vAudio.volume = level;
+    if (level > 0 && vAudio.muted) setMuted(false);
+    try { localStorage.setItem('localtv-volume', String(level)); } catch (_) { /* ignore */ }
   });
   vFullscreen.addEventListener('click', () => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
