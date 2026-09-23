@@ -129,11 +129,18 @@
   }
 
   function buildProgramMap(xmlDoc, chans) {
+    // Tunarr's XMLTV channel ids (e.g. "C92.107.tunarr.com") don't match the
+    // channel API's ids or numbers, so match by display-name instead. Each
+    // <channel> lists several display-names (combined "92 MTV Crt", bare
+    // number "92", bare name "MTV Crt") — index all of them.
     const nameToXmltvId = {};
     xmlDoc.querySelectorAll('channel').forEach(c => {
       const id = c.getAttribute('id');
-      const dn = c.querySelector('display-name')?.textContent?.trim().toLowerCase();
-      if (id && dn) nameToXmltvId[dn] = id;
+      if (!id) return;
+      c.querySelectorAll('display-name').forEach(dn => {
+        const key = dn.textContent?.trim().toLowerCase();
+        if (key) nameToXmltvId[key] = id;
+      });
     });
 
     const programmesByXmltvId = {};
@@ -149,8 +156,9 @@
     const map = {};
     chans.forEach(ch => {
       const xmltvId = programmesByXmltvId[ch.id] ? ch.id
-        : programmesByXmltvId[String(ch.number)] ? String(ch.number)
-        : nameToXmltvId[String(ch.name).trim().toLowerCase()];
+        : nameToXmltvId[`${ch.number} ${ch.name}`.trim().toLowerCase()]
+        ?? nameToXmltvId[String(ch.name).trim().toLowerCase()]
+        ?? nameToXmltvId[String(ch.number)];
       if (xmltvId && programmesByXmltvId[xmltvId]) {
         map[ch.id] = programmesByXmltvId[xmltvId].sort((a, b) => a.start - b.start);
       }
