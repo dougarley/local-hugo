@@ -3,12 +3,12 @@
 <div class="flex flex-col h-full overflow-hidden">
 
   <!-- Top: player + channel list -->
-  <div class="flex-1 min-h-0 flex overflow-hidden">
+  <div class="h-[50vh] shrink-0 flex overflow-hidden">
 
     <!-- Player -->
     <div class="flex-1 min-w-0 flex flex-col overflow-hidden p-6 gap-4">
-      <div class="w-full bg-black rounded-lg overflow-hidden shrink-0" style="aspect-ratio:16/9">
-        <video id="tv-player" class="w-full h-full" controls playsinline></video>
+      <div class="w-full flex-1 min-h-0 bg-black rounded-lg overflow-hidden">
+        <video id="tv-player" class="w-full h-full object-contain" controls playsinline></video>
       </div>
       <div class="flex items-start justify-between gap-4 min-w-0 shrink-0">
         <div id="now-playing" class="min-w-0 text-text-faint text-sm">Select a channel to begin.</div>
@@ -36,7 +36,7 @@
   </div>
 
   <!-- Bottom: TV Guide (EPG) -->
-  <div class="h-72 shrink-0 flex flex-col border-t border-border-default bg-surface-raised overflow-hidden">
+  <div class="flex-1 min-h-0 flex flex-col border-t border-border-default bg-surface-raised overflow-hidden">
     <div class="px-4 py-2 border-b border-border-default shrink-0 flex items-center justify-between">
       <p class="text-xs font-semibold uppercase tracking-widest text-text-faint">TV Guide</p>
       <button id="epg-jump-now" type="button" class="btn btn-xs btn-ghost text-text-muted">Jump to Now</button>
@@ -68,7 +68,8 @@
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
 <script>
 (function () {
-  const TUNARR = "{{ $tunarr }}";
+  const rawTunarr = "{{ $tunarr }}";
+  const TUNARR = rawTunarr && !/^https?:\/\//i.test(rawTunarr) ? `http://${rawTunarr}` : rawTunarr;
 
   // ── EPG layout constants ───────────────────────────────────────
   const PX_PER_MIN     = 4;
