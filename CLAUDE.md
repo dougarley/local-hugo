@@ -48,8 +48,12 @@ Never hardcode these values in `hugo.toml` or templates.
 Channel 0 ("Local Info") in `layouts/local-tv/list.html` is not a Tunarr stream. It rotates
 weather (Open-Meteo), a random game from `lan_games` in `content/games/_index.md`, and photos
 from the Immich album (with a fallback card), and muted video clips (mp4/webm/m4v) from
-`static/clips/`, while playing a shuffled playlist of MP3s from `static/music/`. Both folders
-are gitignored (mount a NAS folder onto `static/clips` in the Hugo container if you like), and
+`static/clips/`, while playing a shuffled playlist of MP3s from `static/music/`. Clips: each
+of up to 5 subfolders of `static/clips/` is a clip folder (mount one NAS folder per subfolder,
+e.g. `/src/static/clips/cartoons`), and loose videos directly in `static/clips/` also count.
+Loose videos in `static/clips/` are the "assorted" pool (about half of all clips); each
+subfolder is one game, penalised for recent use so no single game dominates, and clips within
+a folder are shuffled-bag random (no repeats until all have played). Both folders are gitignored, and
 their file lists are read at Hugo start, so restart `hugo server` after adding files.
 
 ## Content Structure

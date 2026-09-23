@@ -13,12 +13,27 @@
     {{ if and (not .IsDir) (strings.HasSuffix (lower .Name) ".mp3") }}{{ $tracks = $tracks | append .Name }}{{ end }}
   {{ end }}
 {{ end }}
-{{/* Muted video clips for channel 0 come from static/clips (top level only) */}}
-{{ $clips := slice }}
+{{/* Muted video clips for channel 0: up to 5 subfolders of static/clips (one per mount),
+     plus any loose videos directly in static/clips. Each entry is {dir, files}. */}}
+{{ $clipFolders := slice }}
 {{ if os.FileExists "static/clips" }}
+  {{ $rootFiles := slice }}
+  {{ $subdirs := slice }}
   {{ range os.ReadDir "static/clips" }}
-    {{ $n := lower .Name }}
-    {{ if and (not .IsDir) (or (strings.HasSuffix $n ".mp4") (strings.HasSuffix $n ".webm") (strings.HasSuffix $n ".m4v")) }}{{ $clips = $clips | append .Name }}{{ end }}
+    {{ if .IsDir }}
+      {{ if not (strings.HasPrefix .Name ".") }}{{ $subdirs = $subdirs | append .Name }}{{ end }}
+    {{ else if findRE `(?i)\.(mp4|webm|m4v)$` .Name }}
+      {{ $rootFiles = $rootFiles | append .Name }}
+    {{ end }}
+  {{ end }}
+  {{ if $rootFiles }}{{ $clipFolders = $clipFolders | append (dict "dir" "" "files" $rootFiles) }}{{ end }}
+  {{ range first 5 $subdirs }}
+    {{ $dir := . }}
+    {{ $files := slice }}
+    {{ range os.ReadDir (path.Join "static/clips" $dir) }}
+      {{ if and (not .IsDir) (findRE `(?i)\.(mp4|webm|m4v)$` .Name) }}{{ $files = $files | append .Name }}{{ end }}
+    {{ end }}
+    {{ if $files }}{{ $clipFolders = $clipFolders | append (dict "dir" $dir "files" $files) }}{{ end }}
   {{ end }}
 {{ end }}
 
@@ -190,7 +205,7 @@
   const KEY    = "{{ $key }}";
   const LAN_GAMES    = {{ $games }};
   const MUSIC_TRACKS = {{ $tracks }};
-  const CLIP_FILES   = {{ $clips }};
+  const CLIP_FOLDERS = {{ $clipFolders }};
 
   const video          = document.getElementById('tv-player');
   const list           = document.getElementById('channel-list');
@@ -727,7 +742,53 @@
   // Muted video clips from static/clips. Separate media element from the
   // music <audio>, and always muted, so it never competes with the playlist.
   const cVideo = document.getElementById('c-video');
-  let lastClipIndex = -1;
+  // Clip selection. The root folder ("dir" empty) is the assorted pool; each
+  // subfolder is one game. The assorted pool carries as much weight as all game
+  // folders combined, and a game folder is penalised for recent use (and never
+  // plays twice in a row), so no single game dominates. Within a folder, clips
+  // come from a shuffled bag so every clip plays once before any repeats.
+  const CLIP_HISTORY_LEN = 6;    // recent picks considered when penalising a game folder
+  const CLIP_RECENT_PENALTY = 0.2; // weight multiplier per recent appearance
+  const CLIP_MAX_PER_WINDOW = 2;   // hard cap: one game folder at most this often per window
+  let clipHistory = [];            // recent folder indices, newest last
+  const clipBags = new Map();      // folder index -> remaining shuffled clip indices
+  const lastClipInFolder = new Map();
+
+  function pickClipFolder() {
+    const gameCount = CLIP_FOLDERS.filter(f => f.dir).length;
+    const weights = CLIP_FOLDERS.map((f, i) => {
+      if (!f.dir) return Math.max(gameCount, 1);
+      const recent = clipHistory.filter(h => h === i).length;
+      if (clipHistory[clipHistory.length - 1] === i || recent >= CLIP_MAX_PER_WINDOW) return 0;
+      return Math.pow(CLIP_RECENT_PENALTY, recent);
+    });
+    const total = weights.reduce((a, b) => a + b, 0);
+    let fi = Math.floor(Math.random() * CLIP_FOLDERS.length); // fallback: e.g. a lone game folder
+    if (total > 0) {
+      let roll = Math.random() * total;
+      fi = weights.findIndex(w => (roll -= w) < 0);
+      if (fi < 0) fi = weights.length - 1;
+    }
+    clipHistory.push(fi);
+    if (clipHistory.length > CLIP_HISTORY_LEN) clipHistory.shift();
+    return fi;
+  }
+
+  function pickClipInFolder(fi) {
+    let bag = clipBags.get(fi);
+    if (!bag || !bag.length) {
+      bag = shuffled(CLIP_FOLDERS[fi].files.map((_, i) => i));
+      const last = lastClipInFolder.get(fi);
+      if (bag.length > 1 && bag[bag.length - 1] === last) {
+        [bag[bag.length - 1], bag[0]] = [bag[0], bag[bag.length - 1]];
+      }
+      clipBags.set(fi, bag);
+    }
+    const ci = bag.pop();
+    lastClipInFolder.set(fi, ci);
+    return ci;
+  }
+
   let screenHoldMs = SCREEN_MS;   // prepare functions may override (clips hold for their own length)
 
   function stopClip() {
@@ -737,11 +798,12 @@
   }
 
   async function prepareClip() {
-    if (!CLIP_FILES.length) return false;
-    let i;
-    do { i = Math.floor(Math.random() * CLIP_FILES.length); }
-    while (CLIP_FILES.length > 1 && i === lastClipIndex);
-    lastClipIndex = i;
+    if (!Array.isArray(CLIP_FOLDERS) || !CLIP_FOLDERS.length) return false;
+    const fi = pickClipFolder();
+    const folder = CLIP_FOLDERS[fi];
+    const ci = pickClipInFolder(fi);
+    const clipUrl = (folder.dir ? `/clips/${encodeURIComponent(folder.dir)}/` : '/clips/')
+      + encodeURIComponent(folder.files[ci]);
 
     cVideo.muted = true;
     const ready = await new Promise(resolve => {
@@ -749,7 +811,7 @@
       const timer = setTimeout(() => finish(false), 8000);
       cVideo.onloadeddata = () => finish(true);
       cVideo.onerror = () => finish(false);
-      cVideo.src = `/clips/${encodeURIComponent(CLIP_FILES[i])}`;
+      cVideo.src = clipUrl;
       cVideo.load();
     });
     if (!ready) { stopClip(); return false; }
