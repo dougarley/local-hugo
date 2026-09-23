@@ -77,6 +77,13 @@
     background-color: var(--color-surface-overlay);
     color: var(--color-text-primary);
   }
+  @media (max-width: 767px) {
+    .nav-item {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.8125rem;
+      white-space: nowrap;
+    }
+  }
   .nav-item-active {
     background-color: var(--color-accent-subtle);
     color: var(--color-accent);

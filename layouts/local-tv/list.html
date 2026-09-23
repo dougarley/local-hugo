@@ -37,23 +37,127 @@
   {{ end }}
 {{ end }}
 
-<div class="flex flex-col h-full overflow-hidden">
+<style>
+  /* ── Local TV layout ─────────────────────────────────────────────
+     Three modes, driven by CSS variables:
+       default  : desktop / large landscape (side-by-side top row, 50vh)
+       compact  : landscape TVs and small screens (<=1100px wide or <=760px tall)
+       stacked  : phones / portrait (page scrolls; player, channels, guide stack)  */
+  .ltv-root {
+    --ltv-top-h: 50vh; --ltv-side-w: 18rem; --ltv-pad: 1.5rem;
+    --epg-name-w: 192px; --epg-row-h: 56px; --epg-head-h: 40px; --epg-time-w: 1200px;
+    display: flex; flex-direction: column; height: 100%; overflow: hidden;
+  }
+  .ltv-top    { display: flex; flex: none; height: var(--ltv-top-h); overflow: hidden; }
+  .ltv-player { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden;
+                padding: var(--ltv-pad); gap: calc(var(--ltv-pad) * .66); }
+  .ltv-stage  { position: relative; width: 100%; flex: 1; min-height: 0; }
+  .ltv-side   { flex: none; width: var(--ltv-side-w); display: flex; flex-direction: column; overflow: hidden;
+                background: var(--color-surface-raised); border-left: 1px solid var(--color-border-default); }
+  .ltv-side-head { padding: .75rem 1rem; display: flex; flex-direction: column; gap: .5rem; flex: none;
+                   border-bottom: 1px solid var(--color-border-default); }
+  .ltv-guide  { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+                background: var(--color-surface-raised); border-top: 1px solid var(--color-border-default); }
+  .ltv-guide-bar { padding: .5rem 1rem; }
+
+  .epg-grid  { position: relative; display: grid; grid-template-columns: var(--epg-name-w) var(--epg-time-w); }
+  .epg-head  { height: var(--epg-head-h); }
+  .epg-row   { height: var(--epg-row-h); }
+  .epg-now-overlay { left: var(--epg-name-w); right: 0; }
+  .epg-now-label   { top: var(--epg-head-h); }
+
+  @media (orientation: landscape) and (max-width: 1100px), (orientation: landscape) and (max-height: 760px) {
+    .ltv-root { --ltv-top-h: 54vh; --ltv-side-w: 12rem; --ltv-pad: .5rem;
+                --epg-name-w: 132px; --epg-row-h: 44px; --epg-head-h: 32px; }
+    .ltv-side-head { padding: .4rem .5rem; gap: .35rem; }
+    .ltv-side .ch-btn { padding: .3rem .5rem; }
+    .ltv-guide-bar { padding: .25rem .75rem; }
+  }
+  @media (max-width: 559px), (orientation: portrait) {
+    .ltv-root { --ltv-pad: .75rem; --epg-name-w: 104px; --epg-row-h: 44px; --epg-head-h: 32px;
+                height: auto; overflow: visible; }
+    .ltv-top    { flex-direction: column; height: auto; overflow: visible; }
+    .ltv-player { flex: none; }
+    .ltv-stage  { flex: none; aspect-ratio: 16 / 9; }
+    .ltv-stage.is-virtual { aspect-ratio: 3 / 4; }
+    .ltv-side   { width: 100%; max-height: 14rem; border-left: 0; border-top: 1px solid var(--color-border-default); }
+    .ltv-guide  { flex: none; height: 24rem; }
+  }
+
+  /* ── Virtual channel 0 screens ───────────────────────────────────
+     Sizes are in "screen units": --uh = 1% of the screen's height, --uw = 1% of
+     its width. Set by a ResizeObserver, so it works on TV browsers that lack
+     container-query units. .is-tall / .is-narrow / .is-tiny are toggled there too. */
+  .v-root {
+    --bar-t: max(calc(var(--uh, 3px) * 9), 28px);
+    --bar-b: max(calc(var(--uh, 3px) * 8), 24px);
+  }
+  .v-topbar    { height: var(--bar-t); padding: 0 calc(var(--uw, 6px) * 2); font-size: calc(var(--uh, 3px) * 3.6); }
+  .v-bottombar { height: var(--bar-b); padding: 0 calc(var(--uw, 6px) * 2); font-size: calc(var(--uh, 3px) * 3.4); }
+  .v-pad       { padding: calc(var(--bar-t) + var(--uh, 3px) * 2) calc(var(--uw, 6px) * 3) calc(var(--bar-b) + var(--uh, 3px) * 2); }
+  .v-label     { font-size: calc(var(--uh, 3px) * 3.5); }
+  .v-root.is-narrow .v-chlabel { display: none; }
+  .v-root.is-tiny #v-volume    { display: none; }
+
+  .v-weather  { display: flex; align-items: center; justify-content: center; height: 100%; gap: calc(var(--uw, 6px) * 3); }
+  .v-weather-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center;
+                    justify-content: center; text-align: center; gap: calc(var(--uh, 3px) * 1.5); }
+  .v-radar    { flex: none; height: 100%; aspect-ratio: 600 / 550; }
+  .v-w-loc    { font-size: calc(var(--uh, 3px) * 4.5); }
+  .v-w-temp   { font-size: calc(var(--uh, 3px) * 24); }
+  .v-w-desc   { font-size: calc(var(--uh, 3px) * 6.5); }
+  .v-w-details{ font-size: calc(var(--uh, 3px) * 4.2); }
+  .v-w-forecast { display: flex; flex-wrap: wrap; justify-content: center; font-size: calc(var(--uh, 3px) * 3.8);
+                  gap: calc(var(--uh, 3px) * .5) calc(var(--uw, 6px) * 3); margin-top: calc(var(--uh, 3px)); }
+
+  .v-game     { display: flex; height: 100%; gap: calc(var(--uw, 6px) * 3); }
+  .v-game-art { flex: none; align-self: center; width: 48%; aspect-ratio: 460 / 215; max-height: 100%; }
+  .v-game-text{ flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center;
+                gap: calc(var(--uh, 3px) * 1.5); }
+  .v-g-name   { font-size: calc(var(--uh, 3px) * 8); line-height: 1.15; }
+  .v-g-desc   { font-size: calc(var(--uh, 3px) * 4.2); line-height: 1.35; display: -webkit-box;
+                -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
+  .v-g-server { font-size: calc(var(--uh, 3px) * 3.6); }
+
+  .v-photos   { display: flex; flex-direction: column; height: 100%; gap: calc(var(--uh, 3px) * 1.5); }
+  .v-fb-title { font-size: calc(var(--uh, 3px) * 6); }
+  .v-fb-text  { font-size: calc(var(--uh, 3px) * 4); }
+
+  /* Squarish / portrait screens (phones, fullscreen on a phone): stack instead of side-by-side */
+  .v-root.is-tall .v-weather-text { flex: none; }
+  .v-root.is-tall .v-weather { flex-direction: column; }
+  .v-root.is-tall .v-radar   { flex: 1 1 0; min-height: 0; width: 100%; height: auto; aspect-ratio: auto; }
+  .v-root.is-tall .v-weather-text { gap: calc(var(--uh, 3px) * .8); }
+  .v-root.is-tall .v-w-loc   { font-size: calc(var(--uh, 3px) * 3.4); }
+  .v-root.is-tall .v-w-temp  { font-size: calc(var(--uh, 3px) * 11); }
+  .v-root.is-tall .v-w-desc  { font-size: calc(var(--uh, 3px) * 4.4); }
+  .v-root.is-tall .v-w-details, .v-root.is-tall .v-w-forecast { font-size: calc(var(--uh, 3px) * 3); }
+  .v-root.is-tall .v-w-forecast { margin-top: 0; }
+  .v-root.is-tall .v-game    { flex-direction: column; gap: calc(var(--uh, 3px) * 2); }
+  .v-root.is-tall .v-game-art{ width: 100%; max-height: 46%; }
+  .v-root.is-tall .v-game-text { justify-content: flex-start; min-height: 0; overflow: hidden; }
+  .v-root.is-tall .v-g-name  { font-size: calc(var(--uh, 3px) * 5.5); }
+  .v-root.is-tall .v-g-desc  { font-size: calc(var(--uh, 3px) * 3.6); -webkit-line-clamp: 8; line-clamp: 8; }
+  .v-root.is-tall .v-g-server{ font-size: calc(var(--uh, 3px) * 3.2); }
+  .v-root.is-tall.is-narrow .v-g-desc { -webkit-line-clamp: 4; line-clamp: 4; } /* phones: whole lines only */
+</style>
+
+<div class="ltv-root">
 
   <!-- Top: player + channel list -->
-  <div class="h-[50vh] shrink-0 flex overflow-hidden">
+  <div class="ltv-top">
 
     <!-- Player -->
-    <div class="flex-1 min-w-0 flex flex-col overflow-hidden p-6 gap-4">
-      <div class="relative w-full flex-1 min-h-0 bg-black rounded-lg overflow-hidden">
+    <div class="ltv-player">
+      <div id="player-stage" class="ltv-stage bg-black rounded-lg overflow-hidden">
         <video id="tv-player" class="w-full h-full object-contain" controls playsinline></video>
 
-        <!-- Virtual channel 0: rotating info screens (weather / LAN game / photos) -->
-        <div id="virtual-screen" class="hidden absolute inset-0 bg-surface-base overflow-hidden" style="container-type:size">
+        <!-- Virtual channel 0: rotating info screens (weather / LAN game / photos / clips) -->
+        <div id="virtual-screen" class="v-root hidden absolute inset-0 bg-surface-base overflow-hidden">
 
-          <div class="absolute top-0 inset-x-0 z-20 flex items-center justify-between bg-surface-raised border-b border-border-default"
-               style="height:9cqh;padding:0 2cqw;font-size:3.6cqh">
-            <span class="uppercase tracking-widest text-text-muted">CH 0 &middot; Local Info</span>
-            <div class="flex items-center gap-2">
+          <div class="v-topbar absolute top-0 inset-x-0 z-20 flex items-center justify-between bg-surface-raised border-b border-border-default">
+            <span class="v-chlabel uppercase tracking-widest text-text-muted">CH 0 &middot; Local Info</span>
+            <div class="flex items-center gap-2 ml-auto">
               <span id="v-clock" class="text-text-primary"></span>
               <input id="v-volume" type="range" min="0" max="1" step="0.01" aria-label="Music volume"
                      class="range range-xs range-primary w-24">
@@ -63,73 +167,71 @@
           </div>
 
           <section id="v-weather" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
-            <div class="h-full flex items-center justify-center" style="padding:11cqh 3cqw 10cqh;gap:3cqw">
-              <div class="min-w-0 flex-1 flex flex-col items-center justify-center text-center" style="gap:1.5cqh">
-                <p id="w-loc" class="uppercase tracking-widest text-text-muted" style="font-size:4.5cqh"></p>
-                <p id="w-temp" class="font-bold text-text-primary leading-none" style="font-size:24cqh"></p>
-                <p id="w-desc" class="text-accent" style="font-size:6.5cqh"></p>
-                <p id="w-details" class="text-text-muted" style="font-size:4.2cqh"></p>
-                <div id="w-forecast" class="flex flex-wrap justify-center text-text-muted" style="gap:0.5cqh 3cqw;font-size:3.8cqh;margin-top:1cqh"></div>
+            <div class="v-weather v-pad">
+              <div class="v-weather-text">
+                <p id="w-loc" class="v-w-loc uppercase tracking-widest text-text-muted"></p>
+                <p id="w-temp" class="v-w-temp font-bold text-text-primary leading-none"></p>
+                <p id="w-desc" class="v-w-desc text-accent"></p>
+                <p id="w-details" class="v-w-details text-text-muted"></p>
+                <div id="w-forecast" class="v-w-forecast text-text-muted"></div>
               </div>
               <!-- Latest NWS radar for the nearest station (US only); hidden if unavailable -->
-              <div id="w-radar-wrap" class="shrink-0 h-full" style="display:none;aspect-ratio:600/550">
+              <div id="w-radar-wrap" class="v-radar" style="display:none">
                 <img id="w-radar" alt="Local weather radar" class="w-full h-full object-contain rounded-lg bg-surface-overlay">
               </div>
             </div>
           </section>
 
           <section id="v-game" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
-            <div class="h-full flex" style="padding:11cqh 3cqw 10cqh;gap:3cqw">
+            <div class="v-game v-pad">
               <!-- Game art is 460x215; show it whole (no cropping), sized by width and capped by height -->
-              <div class="shrink-0 self-center rounded-lg overflow-hidden bg-surface-overlay flex items-center justify-center"
-                   style="width:48%;aspect-ratio:460/215;max-height:100%">
+              <div class="v-game-art rounded-lg overflow-hidden bg-surface-overlay flex items-center justify-center">
                 <img id="g-img" alt="" class="w-full h-full object-contain">
-                <span id="g-img-fallback" class="text-text-faint uppercase tracking-widest" style="display:none;font-size:3.5cqh">No Cover Art</span>
+                <span id="g-img-fallback" class="v-label text-text-faint uppercase tracking-widest" style="display:none">No Cover Art</span>
               </div>
-              <div class="min-w-0 flex-1 flex flex-col justify-center" style="gap:1.5cqh">
-                <p class="uppercase tracking-widest text-accent" style="font-size:3.5cqh">In the LAN lineup</p>
-                <h2 id="g-name" class="font-bold text-text-primary" style="font-size:8cqh;line-height:1.15"></h2>
-                <p id="g-desc" class="text-text-muted line-clamp-6" style="font-size:4.2cqh;line-height:1.35"></p>
-                <p id="g-server" class="font-mono text-text-primary" style="font-size:3.6cqh"></p>
+              <div class="v-game-text">
+                <p class="v-label uppercase tracking-widest text-accent">In the LAN lineup</p>
+                <h2 id="g-name" class="v-g-name font-bold text-text-primary"></h2>
+                <p id="g-desc" class="v-g-desc text-text-muted"></p>
+                <p id="g-server" class="v-g-server font-mono text-text-primary"></p>
               </div>
             </div>
           </section>
 
           <section id="v-photos" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
-            <div class="h-full flex flex-col" style="padding:11cqh 3cqw 10cqh;gap:1.5cqh">
-              <p class="uppercase tracking-widest text-accent" style="font-size:3.5cqh">From the photo gallery</p>
-              <div id="p-grid" class="flex-1 min-h-0 grid" style="gap:1.5cqh 1.5cqw"></div>
-              <div id="p-fallback" class="flex-1 min-h-0 flex-col items-center justify-center text-center bg-surface-raised rounded-lg border border-border-default" style="display:none;gap:1.5cqh">
-                <p class="text-text-primary font-semibold" style="font-size:6cqh">No photos to show yet</p>
-                <p class="text-text-muted" style="font-size:4cqh">Add pictures to the shared album and they will appear here.</p>
+            <div class="v-photos v-pad">
+              <p class="v-label uppercase tracking-widest text-accent">From the photo gallery</p>
+              <div id="p-grid" class="flex-1 min-h-0 grid" style="gap:calc(var(--uh, 3px) * 1.5) calc(var(--uw, 6px) * 1.5)"></div>
+              <div id="p-fallback" class="flex-1 min-h-0 flex-col items-center justify-center text-center bg-surface-raised rounded-lg border border-border-default" style="display:none;gap:calc(var(--uh, 3px) * 1.5)">
+                <p class="v-fb-title text-text-primary font-semibold">No photos to show yet</p>
+                <p class="v-fb-text text-text-muted">Add pictures to the shared album and they will appear here.</p>
               </div>
             </div>
           </section>
 
           <section id="v-clip" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
-            <div class="h-full bg-black" style="padding:9cqh 0 8cqh">
+            <div class="h-full bg-black" style="padding:var(--bar-t) 0 var(--bar-b)">
               <video id="c-video" class="w-full h-full object-contain" muted loop playsinline preload="auto"></video>
             </div>
           </section>
 
-          <div class="absolute bottom-0 inset-x-0 z-20 flex items-center bg-surface-raised border-t border-border-default text-text-muted"
-               style="height:8cqh;padding:0 2cqw;font-size:3.4cqh">
+          <div class="v-bottombar absolute bottom-0 inset-x-0 z-20 flex items-center bg-surface-raised border-t border-border-default text-text-muted">
             <span id="v-track" class="truncate"></span>
           </div>
         </div>
         <audio id="v-audio" preload="auto"></audio>
       </div>
-      <div class="flex items-start justify-between gap-4 min-w-0 shrink-0">
+      <div class="flex items-start justify-between gap-2 min-w-0 shrink-0">
         <div id="now-playing" class="min-w-0 text-text-faint text-sm">Select a channel to begin.</div>
-        <button id="copy-stream-btn" type="button" class="btn btn-sm btn-accent btn-outline shrink-0 hidden">
+        <button id="copy-stream-btn" type="button" class="btn btn-xs sm:btn-sm btn-accent btn-outline shrink-0 hidden">
           Copy Stream Link
         </button>
       </div>
     </div>
 
     <!-- Channel list -->
-    <div class="w-72 shrink-0 flex flex-col border-l border-border-default bg-surface-raised overflow-hidden">
-      <div class="px-4 py-3 border-b border-border-default shrink-0 space-y-2">
+    <div class="ltv-side">
+      <div class="ltv-side-head">
         <div class="flex items-center justify-between gap-2">
           <p class="text-xs font-semibold uppercase tracking-widest text-text-faint">Channels</p>
           <span id="channel-count" class="text-xs text-text-faint"></span>
@@ -145,29 +247,29 @@
   </div>
 
   <!-- Bottom: TV Guide (EPG) -->
-  <div class="flex-1 min-h-0 flex flex-col border-t border-border-default bg-surface-raised overflow-hidden">
-    <div class="px-4 py-2 border-b border-border-default shrink-0 flex items-center justify-between">
+  <div class="ltv-guide">
+    <div class="ltv-guide-bar border-b border-border-default shrink-0 flex items-center justify-between">
       <p class="text-xs font-semibold uppercase tracking-widest text-text-faint">TV Guide</p>
       <div class="flex items-center gap-2">
         <button id="epg-autoscroll-toggle" type="button" class="btn btn-xs btn-ghost text-text-muted">Auto-Scroll: Off</button>
         <button id="epg-jump-now" type="button" class="btn btn-xs btn-ghost text-text-muted">Jump to Now</button>
       </div>
     </div>
-    <div id="epg-scroll" class="flex-1 overflow-auto">
-      <div id="epg-grid" class="relative" style="display:grid;grid-template-columns:192px 1200px">
+    <div id="epg-scroll" class="flex-1 min-h-0 overflow-auto">
+      <div id="epg-grid" class="epg-grid">
 
         <!-- header row -->
-        <div class="sticky top-0 left-0 z-30 h-10 bg-surface-raised border-b border-r border-border-default flex items-center px-3">
+        <div class="epg-head sticky top-0 left-0 z-30 bg-surface-raised border-b border-r border-border-default flex items-center px-3">
           <span class="text-[10px] uppercase tracking-widest text-text-faint">Channel</span>
         </div>
-        <div id="epg-time-header" class="sticky top-0 z-20 h-10 bg-surface-raised border-b border-border-default relative"></div>
+        <div id="epg-time-header" class="epg-head sticky top-0 z-20 bg-surface-raised border-b border-border-default relative"></div>
 
         <div id="epg-rows-placeholder" class="col-span-2 px-3 py-4 text-text-faint text-xs italic">Loading guide…</div>
 
         <!-- now-line overlay -->
-        <div id="epg-now-overlay" class="absolute top-0 bottom-0 pointer-events-none z-10" style="left:192px;right:0">
+        <div id="epg-now-overlay" class="epg-now-overlay absolute top-0 bottom-0 pointer-events-none z-10">
           <div id="epg-now-line" class="absolute top-0 bottom-0 w-px bg-accent" style="left:0">
-            <span id="epg-now-label" class="absolute top-10 left-1 text-[10px] font-medium text-accent bg-surface-raised px-1 rounded"></span>
+            <span id="epg-now-label" class="epg-now-label absolute left-1 text-[10px] font-medium text-accent bg-surface-raised px-1 rounded"></span>
           </div>
         </div>
 
@@ -185,10 +287,8 @@
 
   // ── EPG layout constants ───────────────────────────────────────
   const PX_PER_MIN     = 4;
-  const WINDOW_MINUTES = 300; // 5-hour visible window
+  const MIN_WINDOW_MINUTES = 300; // guide is at least 5 hours wide; grows to fill wide screens
   const TICK_MIN       = 30;
-  const ROW_HEIGHT_PX    = 56; // matches h-14 channel/programme rows
-  const HEADER_HEIGHT_PX = 40; // matches h-10 time-ticks header row
 
   // Auto-scroll: AUTOSCROLL_ANIM_MS is how long the slow glide to the next
   // row takes; AUTOSCROLL_PAUSE_MS is the total time between the start of
@@ -240,7 +340,6 @@
   let epgRowEls = []; // dynamically created grid row cells, tracked for cleanup
   let autoScrollEnabled = false;
   let autoScrollTimer = null;
-  let suppressScrollEvents = false;
   let autoScrollRow = 0; // 0-indexed row within the doubled (primary + duplicate) row set
 
   function escapeHtml(str) {
@@ -347,7 +446,7 @@
 
   function buildEPGRow(ch, windowStart, windowEnd, now) {
     const nameCell = document.createElement('div');
-    nameCell.className = 'sticky left-0 z-10 bg-surface-raised border-b border-r border-border-default h-14 flex items-center gap-2 px-3 min-w-0';
+    nameCell.className = 'epg-row sticky left-0 z-10 bg-surface-raised border-b border-r border-border-default flex items-center gap-2 px-3 min-w-0';
     nameCell.innerHTML = `
       ${iconHTML(ch, 'w-6 h-6')}
       <div class="min-w-0">
@@ -356,7 +455,7 @@
       </div>`;
 
     const timelineCell = document.createElement('div');
-    timelineCell.className = 'relative h-14 border-b border-border-default';
+    timelineCell.className = 'epg-row relative border-b border-border-default';
 
     const progs = ch.virtual
       ? [{ start: windowStart, stop: windowEnd, title: `Local Info: ${VIRTUAL_SUBTITLE}` }]
@@ -397,11 +496,16 @@
 
     const now = new Date();
     const windowStart = computeWindowStart(now);
-    const windowEnd = new Date(windowStart.getTime() + WINDOW_MINUTES * 60000);
+    // Fill the available width (whole 30-minute ticks) so wide screens don't end in blank space
+    const nameColPx = cssPx('--epg-name-w', 192);
+    const fitMinutes = Math.ceil((epgScroll.clientWidth - nameColPx) / PX_PER_MIN / TICK_MIN) * TICK_MIN;
+    const windowMinutes = Math.max(MIN_WINDOW_MINUTES, fitMinutes);
+    epgGrid.style.setProperty('--epg-time-w', `${windowMinutes * PX_PER_MIN}px`);
+    const windowEnd = new Date(windowStart.getTime() + windowMinutes * 60000);
 
     // Time ticks header
     let ticksHTML = '';
-    for (let m = 0; m <= WINDOW_MINUTES; m += TICK_MIN) {
+    for (let m = 0; m <= windowMinutes; m += TICK_MIN) {
       const t = new Date(windowStart.getTime() + m * 60000);
       ticksHTML += `<div class="absolute top-0 h-full flex items-center px-2 text-[11px] text-text-faint border-l border-border-subtle" style="left:${m * PX_PER_MIN}px">${formatHM(t)}</div>`;
     }
@@ -440,6 +544,14 @@
   // once we glide past the last "real" row we're looking at a pixel-identical
   // duplicate of row 1 — at that point we snap scrollTop back by one full
   // set, invisibly, instead of visibly jumping to the top.
+  // Row/header heights come from CSS variables so they follow the layout mode.
+  function cssPx(name, fallback) {
+    const v = parseFloat(getComputedStyle(epgGrid).getPropertyValue(name));
+    return Number.isFinite(v) ? v : fallback;
+  }
+  const rowHeightPx    = () => cssPx('--epg-row-h', 56);
+  const headerHeightPx = () => cssPx('--epg-head-h', 40);
+
   function setAutoScroll(on) {
     autoScrollEnabled = on;
     epgAutoscrollToggle.textContent = `Auto-Scroll: ${on ? 'On' : 'Off'}`;
@@ -447,7 +559,7 @@
     epgAutoscrollToggle.classList.toggle('text-text-muted', !on);
     clearTimeout(autoScrollTimer);
     if (on) {
-      autoScrollRow = Math.max(0, Math.round((epgScroll.scrollTop - HEADER_HEIGHT_PX) / ROW_HEIGHT_PX));
+      autoScrollRow = Math.max(0, Math.round((epgScroll.scrollTop - headerHeightPx()) / rowHeightPx()));
       autoScrollStep();
     }
   }
@@ -456,15 +568,13 @@
     if (!autoScrollEnabled || !channels.length) return;
     const rowCount = channels.length;
     autoScrollRow += 1;
-    const target = HEADER_HEIGHT_PX + autoScrollRow * ROW_HEIGHT_PX;
+    const target = headerHeightPx() + autoScrollRow * rowHeightPx();
 
-    suppressScrollEvents = true;
     animateScrollTop(epgScroll, target, AUTOSCROLL_ANIM_MS, () => {
       if (autoScrollRow >= rowCount) {
         autoScrollRow -= rowCount;
-        epgScroll.scrollTop = HEADER_HEIGHT_PX + autoScrollRow * ROW_HEIGHT_PX;
+        epgScroll.scrollTop = headerHeightPx() + autoScrollRow * rowHeightPx();
       }
-      suppressScrollEvents = false;
     });
     autoScrollTimer = setTimeout(autoScrollStep, AUTOSCROLL_PAUSE_MS);
   }
@@ -488,11 +598,14 @@
 
   epgAutoscrollToggle.addEventListener('click', () => setAutoScroll(!autoScrollEnabled));
 
-  // Manually grabbing the guide (outside our own animation window) cancels auto-scroll.
-  epgScroll.addEventListener('scroll', () => {
-    if (suppressScrollEvents || !autoScrollEnabled) return;
-    setAutoScroll(false);
-  });
+  // The user taking over cancels auto-scroll. Listen for real input (wheel, touch,
+  // dragging the scrollbar) rather than scroll events: our own programmatic
+  // scrolling — including the invisible snap-back at the loop point — fires scroll
+  // events a frame late, which can't be told apart from a user scroll.
+  const stopAutoScroll = () => { if (autoScrollEnabled) setAutoScroll(false); };
+  epgScroll.addEventListener('wheel', stopAutoScroll, { passive: true });
+  epgScroll.addEventListener('touchstart', stopAutoScroll, { passive: true });
+  epgScroll.addEventListener('pointerdown', e => { if (e.target === epgScroll) stopAutoScroll(); });
 
   // ── Player ──────────────────────────────────────────────────────
   function setActive(id) {
@@ -590,6 +703,22 @@
   } catch (_) { /* storage unavailable — use default */ }
   vAudio.volume = savedVolume;
   vVolume.value = savedVolume;
+
+  // Screen units for the info screens (CSS uses --uh / --uw = 1% of height / width),
+  // plus shape classes so the layouts can stack on tall/narrow screens. Done in JS
+  // rather than container-query units so older TV browsers work too.
+  const playerStage = document.getElementById('player-stage');
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      if (!width || !height) return; // hidden
+      vScreen.style.setProperty('--uh', `${height / 100}px`);
+      vScreen.style.setProperty('--uw', `${width / 100}px`);
+      vScreen.classList.toggle('is-tall', width / height < 1.3);
+      vScreen.classList.toggle('is-narrow', width < 520);
+      vScreen.classList.toggle('is-tiny', width < 400);
+    }).observe(vScreen);
+  }
 
   let virtualRun = 0;          // bumped on every start/stop so stale async work bails out
   let virtualTimer = null;
@@ -964,6 +1093,7 @@
     const run = virtualRun;
     video.classList.add('hidden');
     vScreen.classList.remove('hidden');
+    playerStage.classList.add('is-virtual');
     showScreen(null);
     screenIndex = -1;
     musicErrors = 0;
@@ -989,6 +1119,7 @@
     haltVirtual();
     if (document.fullscreenElement === vScreen) document.exitFullscreen().catch(() => {});
     vScreen.classList.add('hidden');
+    playerStage.classList.remove('is-virtual');
     video.classList.remove('hidden');
     vTrack.textContent = '';
   }
@@ -1070,6 +1201,12 @@
       epgRowsPlaceholder.textContent = 'Could not load channels.';
     }
   }
+
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (channels.length) renderEPG(); }, 250);
+  });
 
   loadChannels();
   setInterval(() => { if (channels.length) renderEPG(); }, 60000);
