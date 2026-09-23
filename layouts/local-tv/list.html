@@ -39,7 +39,10 @@
   <div class="flex-1 min-h-0 flex flex-col border-t border-border-default bg-surface-raised overflow-hidden">
     <div class="px-4 py-2 border-b border-border-default shrink-0 flex items-center justify-between">
       <p class="text-xs font-semibold uppercase tracking-widest text-text-faint">TV Guide</p>
-      <button id="epg-jump-now" type="button" class="btn btn-xs btn-ghost text-text-muted">Jump to Now</button>
+      <div class="flex items-center gap-2">
+        <button id="epg-autoscroll-toggle" type="button" class="btn btn-xs btn-ghost text-text-muted">Auto-Scroll: Off</button>
+        <button id="epg-jump-now" type="button" class="btn btn-xs btn-ghost text-text-muted">Jump to Now</button>
+      </div>
     </div>
     <div id="epg-scroll" class="flex-1 overflow-auto">
       <div id="epg-grid" class="relative" style="display:grid;grid-template-columns:192px 1200px">
@@ -75,6 +78,14 @@
   const PX_PER_MIN     = 4;
   const WINDOW_MINUTES = 300; // 5-hour visible window
   const TICK_MIN       = 30;
+  const ROW_HEIGHT_PX    = 56; // matches h-14 channel/programme rows
+  const HEADER_HEIGHT_PX = 40; // matches h-10 time-ticks header row
+
+  // Auto-scroll: pause length between rows, and how long to ignore scroll
+  // events while our own smooth-scroll animation is still moving (so we
+  // don't mistake it for the user grabbing the scrollbar).
+  const AUTOSCROLL_PAUSE_MS = 2500;
+  const AUTOSCROLL_ANIM_MS  = 500;
 
   const video          = document.getElementById('tv-player');
   const list           = document.getElementById('channel-list');
@@ -87,6 +98,7 @@
   const epgRowsPlaceholder = document.getElementById('epg-rows-placeholder');
   const epgScroll         = document.getElementById('epg-scroll');
   const epgJumpNow        = document.getElementById('epg-jump-now');
+  const epgAutoscrollToggle = document.getElementById('epg-autoscroll-toggle');
   const epgNowLine        = document.getElementById('epg-now-line');
   const epgNowLabel       = document.getElementById('epg-now-label');
 
@@ -95,6 +107,9 @@
   let activeChannel = null;
   let programsByChannel = {}; // tunarr channel id -> [{start, stop, title}]
   let epgRowEls = []; // dynamically created grid row cells, tracked for cleanup
+  let autoScrollEnabled = false;
+  let autoScrollTimer = null;
+  let suppressScrollEvents = false;
 
   function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, c => ({
@@ -272,6 +287,44 @@
 
   epgJumpNow.addEventListener('click', () => {
     epgScroll.scrollTo({ left: 0, behavior: 'smooth' });
+  });
+
+  // ── EPG auto-scroll (one row at a time, with a pause between) ──
+  function setAutoScroll(on) {
+    autoScrollEnabled = on;
+    epgAutoscrollToggle.textContent = `Auto-Scroll: ${on ? 'On' : 'Off'}`;
+    epgAutoscrollToggle.classList.toggle('text-accent', on);
+    epgAutoscrollToggle.classList.toggle('text-text-muted', !on);
+    clearTimeout(autoScrollTimer);
+    if (on) autoScrollStep();
+  }
+
+  function autoScrollStep() {
+    if (!autoScrollEnabled) return;
+    const maxScroll = epgScroll.scrollHeight - epgScroll.clientHeight;
+    const current = epgScroll.scrollTop;
+    let target;
+    if (maxScroll <= 0) {
+      return; // nothing to scroll (guide fits on screen)
+    } else if (current >= maxScroll - 2) {
+      target = 0; // looped past the last row — reset to the top
+    } else {
+      const rowIndex = Math.round((current - HEADER_HEIGHT_PX) / ROW_HEIGHT_PX) + 1;
+      target = Math.min(HEADER_HEIGHT_PX + rowIndex * ROW_HEIGHT_PX, maxScroll);
+    }
+
+    suppressScrollEvents = true;
+    epgScroll.scrollTo({ top: target, behavior: 'smooth' });
+    setTimeout(() => { suppressScrollEvents = false; }, AUTOSCROLL_ANIM_MS);
+    autoScrollTimer = setTimeout(autoScrollStep, AUTOSCROLL_PAUSE_MS);
+  }
+
+  epgAutoscrollToggle.addEventListener('click', () => setAutoScroll(!autoScrollEnabled));
+
+  // Manually grabbing the guide (outside our own animation window) cancels auto-scroll.
+  epgScroll.addEventListener('scroll', () => {
+    if (suppressScrollEvents || !autoScrollEnabled) return;
+    setAutoScroll(false);
   });
 
   // ── Player ──────────────────────────────────────────────────────
