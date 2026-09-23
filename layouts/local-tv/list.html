@@ -13,6 +13,14 @@
     {{ if and (not .IsDir) (strings.HasSuffix (lower .Name) ".mp3") }}{{ $tracks = $tracks | append .Name }}{{ end }}
   {{ end }}
 {{ end }}
+{{/* Muted video clips for channel 0 come from static/clips (top level only) */}}
+{{ $clips := slice }}
+{{ if os.FileExists "static/clips" }}
+  {{ range os.ReadDir "static/clips" }}
+    {{ $n := lower .Name }}
+    {{ if and (not .IsDir) (or (strings.HasSuffix $n ".mp4") (strings.HasSuffix $n ".webm") (strings.HasSuffix $n ".m4v")) }}{{ $clips = $clips | append .Name }}{{ end }}
+  {{ end }}
+{{ end }}
 
 <div class="flex flex-col h-full overflow-hidden">
 
@@ -72,6 +80,12 @@
                 <p class="text-text-primary font-semibold" style="font-size:6cqh">No photos to show yet</p>
                 <p class="text-text-muted" style="font-size:4cqh">Add pictures to the shared album and they will appear here.</p>
               </div>
+            </div>
+          </section>
+
+          <section id="v-clip" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
+            <div class="h-full bg-black" style="padding:9cqh 0 8cqh">
+              <video id="c-video" class="w-full h-full object-contain" muted loop playsinline preload="auto"></video>
             </div>
           </section>
 
@@ -161,8 +175,10 @@
 
   // ── Virtual channel 0 config ───────────────────────────────────
   const VIRTUAL_CHANNEL  = { id: 'virtual-0', number: 0, name: 'Local Info', virtual: true };
-  const VIRTUAL_SUBTITLE = 'Weather, LAN games & photos';
+  const VIRTUAL_SUBTITLE = 'Weather, LAN games, photos & clips';
   const SCREEN_MS        = 15000;        // how long each info screen stays up
+  const CLIP_MIN_MS      = 10000;        // a video clip screen holds at least this long (short clips loop)
+  const CLIP_MAX_MS      = 30000;        // ...and is cut off after this long
   const WEATHER_TTL_MS   = 10 * 60000;   // reuse a weather fetch this long
   const ALBUM_TTL_MS     = 10 * 60000;   // reuse the photo album listing this long
   const MUSIC_VOLUME     = 0.6;
@@ -174,6 +190,7 @@
   const KEY    = "{{ $key }}";
   const LAN_GAMES    = {{ $games }};
   const MUSIC_TRACKS = {{ $tracks }};
+  const CLIP_FILES   = {{ $clips }};
 
   const video          = document.getElementById('tv-player');
   const list           = document.getElementById('channel-list');
@@ -707,19 +724,68 @@
     return true;
   }
 
+  // Muted video clips from static/clips. Separate media element from the
+  // music <audio>, and always muted, so it never competes with the playlist.
+  const cVideo = document.getElementById('c-video');
+  let lastClipIndex = -1;
+  let screenHoldMs = SCREEN_MS;   // prepare functions may override (clips hold for their own length)
+
+  function stopClip() {
+    cVideo.pause();
+    cVideo.removeAttribute('src');
+    cVideo.load();
+  }
+
+  async function prepareClip() {
+    if (!CLIP_FILES.length) return false;
+    let i;
+    do { i = Math.floor(Math.random() * CLIP_FILES.length); }
+    while (CLIP_FILES.length > 1 && i === lastClipIndex);
+    lastClipIndex = i;
+
+    cVideo.muted = true;
+    const ready = await new Promise(resolve => {
+      const finish = ok => { clearTimeout(timer); cVideo.onloadeddata = null; cVideo.onerror = null; resolve(ok); };
+      const timer = setTimeout(() => finish(false), 8000);
+      cVideo.onloadeddata = () => finish(true);
+      cVideo.onerror = () => finish(false);
+      cVideo.src = `/clips/${encodeURIComponent(CLIP_FILES[i])}`;
+      cVideo.load();
+    });
+    if (!ready) { stopClip(); return false; }
+
+    const lengthMs = Number.isFinite(cVideo.duration) ? cVideo.duration * 1000 : CLIP_MAX_MS;
+    screenHoldMs = Math.min(Math.max(lengthMs, CLIP_MIN_MS), CLIP_MAX_MS);
+    try {
+      cVideo.currentTime = 0;
+      await cVideo.play();
+    } catch (err) {
+      console.warn('Clip failed to play:', err.message);
+      stopClip();
+      return false;
+    }
+    return true;
+  }
+
   const SCREENS = [
     { id: 'v-weather', prepare: prepareWeather },
     { id: 'v-game',    prepare: prepareGame },
     { id: 'v-photos',  prepare: preparePhotos },
+    { id: 'v-clip',    prepare: prepareClip },
   ];
 
   function showScreen(activeId) {
     SCREENS.forEach(s => {
       const on = s.id === activeId;
       const el = document.getElementById(s.id);
+      const wasOn = el.classList.contains('opacity-100');
       el.classList.toggle('opacity-100', on);
       el.classList.toggle('opacity-0', !on);
       el.classList.toggle('pointer-events-none', !on);
+      // Let the clip finish fading out before freeing the video
+      if (wasOn && !on && s.id === 'v-clip') {
+        setTimeout(() => { if (!el.classList.contains('opacity-100')) stopClip(); }, 1100);
+      }
     });
   }
 
@@ -727,13 +793,14 @@
     for (let tries = 0; tries < SCREENS.length; tries++) {
       screenIndex = (screenIndex + 1) % SCREENS.length;
       const screen = SCREENS[screenIndex];
+      screenHoldMs = SCREEN_MS;
       let ok = false;
       try { ok = await screen.prepare(); }
       catch (err) { console.warn(`${screen.id} failed:`, err.message); }
       if (run !== virtualRun) return;
       if (ok) { showScreen(screen.id); break; }
     }
-    virtualTimer = setTimeout(() => nextScreen(run), SCREEN_MS);
+    virtualTimer = setTimeout(() => nextScreen(run), screenHoldMs);
   }
 
   // Shuffled MP3 playlist from static/music, looping (reshuffled) forever
@@ -803,6 +870,7 @@
     virtualRun++;
     clearTimeout(virtualTimer);
     clearInterval(clockTimer);
+    stopClip();
     vAudio.pause();
     vAudio.removeAttribute('src');
     vAudio.load();

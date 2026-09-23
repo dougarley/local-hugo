@@ -31,3 +31,7 @@ node_modules/
 # Local MP3s for the Local TV virtual channel 0 (folder kept, files ignored)
 static/music/*
 !static/music/.gitkeep
+
+# Video clips for the Local TV virtual channel 0 (folder kept, files ignored; usually a mounted NAS folder)
+static/clips/*
+!static/clips/.gitkeep
