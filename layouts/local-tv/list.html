@@ -7,11 +7,28 @@
 {{/* Virtual channel 0 inputs: LAN games from the games page, MP3s from static/music */}}
 {{ $games := slice }}
 {{ with .Site.GetPage "/games" }}{{ with .Params.lan_games }}{{ $games = . }}{{ end }}{{ end }}
-{{ $tracks := slice }}
+{{/* Music playlists for channel 0: each subfolder of static/music is a playlist;
+     loose MP3s directly in static/music become an "Unsorted" playlist. Each entry is {name, dir, files}. */}}
+{{ $playlists := slice }}
 {{ if os.FileExists "static/music" }}
+  {{ $looseTracks := slice }}
+  {{ $musicDirs := slice }}
   {{ range os.ReadDir "static/music" }}
-    {{ if and (not .IsDir) (strings.HasSuffix (lower .Name) ".mp3") }}{{ $tracks = $tracks | append .Name }}{{ end }}
+    {{ if .IsDir }}
+      {{ if not (strings.HasPrefix .Name ".") }}{{ $musicDirs = $musicDirs | append .Name }}{{ end }}
+    {{ else if findRE `(?i)\.mp3$` .Name }}
+      {{ $looseTracks = $looseTracks | append .Name }}
+    {{ end }}
   {{ end }}
+  {{ range $musicDirs }}
+    {{ $dir := . }}
+    {{ $files := slice }}
+    {{ range os.ReadDir (path.Join "static/music" $dir) }}
+      {{ if and (not .IsDir) (findRE `(?i)\.mp3$` .Name) }}{{ $files = $files | append .Name }}{{ end }}
+    {{ end }}
+    {{ if $files }}{{ $playlists = $playlists | append (dict "name" $dir "dir" $dir "files" $files) }}{{ end }}
+  {{ end }}
+  {{ if $looseTracks }}{{ $playlists = $playlists | append (dict "name" "Unsorted" "dir" "" "files" $looseTracks) }}{{ end }}
 {{ end }}
 {{/* Muted video clips for channel 0: up to 5 subfolders of static/clips (one per mount),
      plus any loose videos directly in static/clips. Each entry is {dir, files}. */}}
@@ -96,6 +113,8 @@
   .v-bottombar { height: var(--bar-b); padding: 0 calc(var(--uw, 6px) * 2); font-size: calc(var(--uh, 3px) * 3.4); }
   .v-pad       { padding: calc(var(--bar-t) + var(--uh, 3px) * 2) calc(var(--uw, 6px) * 3) calc(var(--bar-b) + var(--uh, 3px) * 2); }
   .v-label     { font-size: calc(var(--uh, 3px) * 3.5); }
+  #v-playlist  { width: auto; max-width: 13rem; }
+  .v-root.is-tiny #v-playlist { max-width: 7.5rem; }
   .v-root.is-narrow .v-chlabel { display: none; }
   .v-root.is-tiny #v-volume    { display: none; }
 
@@ -215,8 +234,10 @@
             </div>
           </section>
 
-          <div class="v-bottombar absolute bottom-0 inset-x-0 z-20 flex items-center bg-surface-raised border-t border-border-default text-text-muted">
-            <span id="v-track" class="truncate"></span>
+          <div class="v-bottombar absolute bottom-0 inset-x-0 z-20 flex items-center justify-between gap-2 bg-surface-raised border-t border-border-default text-text-muted">
+            <span id="v-track" class="min-w-0 truncate"></span>
+            <select id="v-playlist" aria-label="Music playlist"
+                    class="select select-xs shrink-0 bg-surface-overlay border-border-default text-text-primary"></select>
           </div>
         </div>
         <audio id="v-audio" preload="auto"></audio>
@@ -314,7 +335,8 @@
   const ALBUM  = "{{ $album }}";
   const KEY    = "{{ $key }}";
   const LAN_GAMES    = {{ $games }};
-  const MUSIC_TRACKS = {{ $tracks }};
+  const MUSIC_PLAYLISTS = {{ $playlists }};
+  const DEFAULT_PLAYLIST = 'TWC98';      // soundtrack used until someone picks another (case-insensitive)
   const CLIP_FOLDERS = {{ $clipFolders }};
 
   const video          = document.getElementById('tv-player');
@@ -1041,15 +1063,54 @@
     virtualTimer = setTimeout(() => nextScreen(run), screenHoldMs);
   }
 
-  // Shuffled MP3 playlist from static/music, looping (reshuffled) forever
+  // Playlists = subfolders of static/music (see MUSIC_PLAYLISTS). The selected one
+  // plays shuffled, looping (reshuffled) forever. TWC98 is the default soundtrack;
+  // a viewer's choice is remembered in this browser.
+  const vPlaylist = document.getElementById('v-playlist');
+  const PLAYLIST_KEY = 'localtv-playlist';
+  let currentPlaylist = null;
+
+  function pickInitialPlaylist() {
+    if (!Array.isArray(MUSIC_PLAYLISTS) || !MUSIC_PLAYLISTS.length) return null;
+    let saved = null;
+    try { saved = localStorage.getItem(PLAYLIST_KEY); } catch (_) { /* storage unavailable */ }
+    const byName = name => MUSIC_PLAYLISTS.find(p => p.name.toLowerCase() === String(name).toLowerCase());
+    return (saved && byName(saved)) || byName(DEFAULT_PLAYLIST) || MUSIC_PLAYLISTS[0];
+  }
+
+  function setupPlaylistPicker() {
+    currentPlaylist = pickInitialPlaylist();
+    if (!currentPlaylist) { vPlaylist.style.display = 'none'; return; }
+    vPlaylist.innerHTML = '';
+    MUSIC_PLAYLISTS.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = `${p.name} (${p.files.length})`;
+      vPlaylist.appendChild(opt);
+    });
+    vPlaylist.value = currentPlaylist.name;
+  }
+
+  vPlaylist.addEventListener('change', () => {
+    const chosen = MUSIC_PLAYLISTS.find(p => p.name === vPlaylist.value);
+    if (!chosen) return;
+    currentPlaylist = chosen;
+    try { localStorage.setItem(PLAYLIST_KEY, chosen.name); } catch (_) { /* ignore */ }
+    musicQueue = shuffled(chosen.files);
+    musicPos = 0;
+    musicErrors = 0;
+    if (!vScreen.classList.contains('hidden')) playTrack(); // picking is a click, so audio is allowed
+  });
+
   function playTrack() {
-    if (!MUSIC_TRACKS.length) {
-      vTrack.textContent = 'No music found — add .mp3 files to static/music and restart Hugo';
+    if (!currentPlaylist || !currentPlaylist.files.length) {
+      vTrack.textContent = 'No music found — add .mp3 files in a folder under static/music and restart Hugo';
       return;
     }
-    if (musicPos >= musicQueue.length) { musicQueue = shuffled(MUSIC_TRACKS); musicPos = 0; }
+    if (musicPos >= musicQueue.length) { musicQueue = shuffled(currentPlaylist.files); musicPos = 0; }
     const name = musicQueue[musicPos];
-    vAudio.src = `/music/${encodeURIComponent(name)}`;
+    vAudio.src = (currentPlaylist.dir ? `/music/${encodeURIComponent(currentPlaylist.dir)}/` : '/music/')
+      + encodeURIComponent(name);
     trackLabel = `Now playing: ${name.replace(/\.mp3$/i, '')}`;
     vTrack.textContent = trackLabel;
     vAudio.play().catch(err => {
@@ -1079,10 +1140,12 @@
   vAudio.addEventListener('playing', () => { musicErrors = 0; });
   vAudio.addEventListener('ended', () => { musicPos++; playTrack(); });
   vAudio.addEventListener('error', () => {
-    if (!vAudio.getAttribute('src') || ++musicErrors >= MUSIC_TRACKS.length) return;
+    if (!vAudio.getAttribute('src') || !currentPlaylist || ++musicErrors >= currentPlaylist.files.length) return;
     musicPos++;
     playTrack();
   });
+
+  setupPlaylistPicker();
 
   function updateClock() {
     vClock.textContent = `${new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}  ${formatHM(new Date())}`;
@@ -1097,7 +1160,7 @@
     showScreen(null);
     screenIndex = -1;
     musicErrors = 0;
-    musicQueue = shuffled(MUSIC_TRACKS);
+    musicQueue = shuffled(currentPlaylist ? currentPlaylist.files : []);
     musicPos = 0;
     playTrack();
     updateClock();
