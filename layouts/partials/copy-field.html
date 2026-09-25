@@ -1,0 +1,13 @@
+{{/* A read-only value with a copy button. Params: value, label (for the button's aria-label), prefix (optional visible label) */}}
+<div class="join w-full">
+  {{ with .prefix }}<div class="join-item bg-base-300 pl-3 py-1.5 text-xs text-text-faint self-center">{{ . }}</div>{{ end }}
+  <div class="join-item flex-1 bg-base-300 px-3 py-1.5 font-mono text-xs text-text-primary truncate self-center">{{ .value }}</div>
+  <button type="button" class="join-item btn btn-sm btn-accent btn-outline copy-btn" data-copy="{{ .value }}" data-label="Copy {{ .label }}" aria-label="Copy {{ .label }}">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M8 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2M8 7h7a2 2 0 0 1 2 2v7" />
+    </svg>
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 check-icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  </button>
+</div>

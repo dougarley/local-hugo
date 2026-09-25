@@ -24,22 +24,7 @@
         <div class="card-body">
           <h3 class="card-title text-text-primary">{{ $game.name }}</h3>
           <p class="text-text-muted text-sm">{{ $game.description }}</p>
-          {{ with $game.server_address }}
-          <div class="mt-1">
-            <div class="join w-full">
-              <div class="join-item flex-1 bg-base-300 px-3 py-1.5 font-mono text-xs text-text-primary truncate self-center">{{ . }}</div>
-              <button type="button" class="join-item btn btn-sm btn-accent btn-outline copy-btn" data-copy="{{ . }}" aria-label="Copy server address">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M8 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2M8 7h7a2 2 0 0 1 2 2v7" />
-                </svg>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 check-icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </button>
-            </div>
-            {{ with $game.server_note }}<p class="text-text-faint text-xs mt-1">{{ . }}</p>{{ end }}
-          </div>
-          {{ end }}
+          {{ partial "server-info.html" $game }}
           {{ with $game.links }}
           <div class="card-actions justify-end mt-2">
             {{ range . }}
@@ -72,22 +57,7 @@
         {{ end }}
         <div class="card-body">
           <h3 class="card-title text-text-primary">{{ $game.name }}</h3>
-          {{ with $game.server_address }}
-          <div class="mt-1">
-            <div class="join w-full">
-              <div class="join-item flex-1 bg-base-300 px-3 py-1.5 font-mono text-xs text-text-primary truncate self-center">{{ . }}</div>
-              <button type="button" class="join-item btn btn-sm btn-accent btn-outline copy-btn" data-copy="{{ . }}" aria-label="Copy server address">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M8 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2M8 7h7a2 2 0 0 1 2 2v7" />
-                </svg>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 check-icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </button>
-            </div>
-            {{ with $game.server_note }}<p class="text-text-faint text-xs mt-1">{{ . }}</p>{{ end }}
-          </div>
-          {{ end }}
+          {{ partial "server-info.html" $game }}
         </div>
       </div>
       {{ end }}
@@ -116,7 +86,7 @@
             checkIcon.classList.add('hidden');
             btn.classList.remove('btn-success');
             btn.classList.add('btn-accent');
-            btn.setAttribute('aria-label', 'Copy server address');
+            btn.setAttribute('aria-label', btn.dataset.label);
           }, 1500);
         });
       });

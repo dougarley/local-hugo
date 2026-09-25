@@ -1,0 +1,8 @@
+{{/* Server address, optional password, and optional note for a game card. Context: a game entry. */}}
+{{ if or .server_address .server_password }}
+<div class="mt-1 flex flex-col gap-1.5">
+  {{ with .server_address }}{{ partial "copy-field.html" (dict "value" . "label" "server address") }}{{ end }}
+  {{ with .server_password }}{{ partial "copy-field.html" (dict "value" . "label" "server password" "prefix" "Password") }}{{ end }}
+  {{ with .server_note }}<p class="text-text-faint text-xs">{{ . }}</p>{{ end }}
+</div>
+{{ end }}
