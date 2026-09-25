@@ -5,19 +5,20 @@
 <div class="flex flex-col h-full overflow-hidden">
 
   <!-- Header -->
-  <div class="px-8 py-4 border-b border-border-default shrink-0 flex items-center justify-between">
-    <div>
-      <h1 id="album-name" class="text-lg font-bold text-text-primary">Photos</h1>
+  <div class="px-4 sm:px-8 py-4 border-b border-border-default shrink-0 flex items-center justify-between gap-4">
+    <div class="min-w-0">
+      <h1 id="album-name" class="text-lg font-bold text-text-primary truncate">Photos</h1>
       <p id="album-count" class="text-text-faint text-xs mt-0.5"></p>
     </div>
-    <div id="status-msg" class="text-text-faint text-xs"></div>
+    <div id="status-msg" class="text-text-faint text-xs shrink-0"></div>
   </div>
 
-  <!-- Grid -->
-  <div id="photo-grid"
-       class="flex-1 overflow-y-auto p-6 grid gap-2"
-       style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr))">
-    <!-- Populated by JS -->
+  <!-- Grid: the wrapper scrolls so the grid keeps its natural height (a fixed-height grid squashes its rows) -->
+  <div class="flex-1 min-h-0 overflow-y-auto">
+    <div id="photo-grid"
+         class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-8 gap-1.5 sm:gap-2 p-3 sm:p-6">
+      <!-- Populated by JS -->
+    </div>
   </div>
 
 </div>
@@ -37,7 +38,7 @@
           aria-label="Next">&#x203a;</button>
   <img id="lb-img" src="" alt=""
        class="max-h-[90vh] max-w-[90vw] object-contain rounded shadow-2xl">
-  <p id="lb-caption" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/50 text-xs"></p>
+  <p id="lb-caption" class="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[90vw] truncate text-white/50 text-xs"></p>
 </div>
 
 <style>

@@ -304,7 +304,20 @@
 <script>
 (function () {
   const rawTunarr = "{{ $tunarr }}";
-  const TUNARR = rawTunarr && !/^https?:\/\//i.test(rawTunarr) ? `http://${rawTunarr}` : rawTunarr;
+  // Accepts a full URL, a bare host:port (gets http://), or a path on this site such as
+  // "/tunarr" when Tunarr is reverse-proxied under a prefix (trailing slash dropped).
+  const TUNARR = (rawTunarr && !/^(https?:\/\/|\/)/i.test(rawTunarr) ? `http://${rawTunarr}` : rawTunarr).replace(/\/+$/, '');
+  const TUNARR_PREFIX = TUNARR.startsWith('/') ? TUNARR : '';
+
+  // Tunarr's HLS playlists reference segments by root path ("/stream/..."), which skips the
+  // proxy prefix. Route those requests back through it.
+  function tunarrXhrSetup(xhr, url) {
+    if (!TUNARR_PREFIX) return;
+    const u = new URL(url, location.href);
+    if (u.origin === location.origin && u.pathname.startsWith('/stream/')) {
+      xhr.open('GET', `${TUNARR_PREFIX}${u.pathname}${u.search}`, true);
+    }
+  }
 
   // ── EPG layout constants ───────────────────────────────────────
   const PX_PER_MIN     = 4;
@@ -674,6 +687,7 @@
         levelLoadingRetryDelay: 1000,
         manifestLoadingMaxRetry: 6,
         manifestLoadingRetryDelay: 1000,
+        xhrSetup: tunarrXhrSetup,
       });
       hls.loadSource(url);
       hls.attachMedia(video);
@@ -695,7 +709,7 @@
     updateNowPlayingText(channel);
     setActive(channel.id);
     copyStreamBtn.classList.remove('hidden');
-    copyStreamBtn.dataset.copy = url;
+    copyStreamBtn.dataset.copy = new URL(url, location.href).href;
     copyStreamBtn.textContent = 'Copy Stream Link';
   }
 
