@@ -67,30 +67,5 @@
 
 </div>
 
-<script>
-  (function () {
-    document.querySelectorAll('.copy-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var value = btn.dataset.copy;
-        navigator.clipboard.writeText(value).then(function () {
-          var copyIcon = btn.querySelector('.copy-icon');
-          var checkIcon = btn.querySelector('.check-icon');
-          copyIcon.classList.add('hidden');
-          checkIcon.classList.remove('hidden');
-          btn.classList.add('btn-success');
-          btn.classList.remove('btn-accent');
-          btn.setAttribute('aria-label', 'Copied');
-          clearTimeout(btn._copyResetTimer);
-          btn._copyResetTimer = setTimeout(function () {
-            copyIcon.classList.remove('hidden');
-            checkIcon.classList.add('hidden');
-            btn.classList.remove('btn-success');
-            btn.classList.add('btn-accent');
-            btn.setAttribute('aria-label', btn.dataset.label);
-          }, 1500);
-        });
-      });
-    });
-  })();
-</script>
+{{ partial "copy-script.html" . }}
 {{ end }}

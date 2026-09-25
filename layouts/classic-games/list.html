@@ -1,0 +1,73 @@
+{{ define "main" }}
+<div class="px-12 py-12">
+
+  <div class="mb-8 pb-6 border-b border-border-default">
+    <h1 class="text-3xl font-bold text-text-primary">{{ .Title }}</h1>
+    {{ with .Params.intro }}<p class="mt-2 text-text-muted">{{ . }}</p>{{ end }}
+  </div>
+
+  {{ with .Params.romm }}
+  <section class="mb-12">
+    <h2 class="text-xl font-semibold text-text-primary mb-5">{{ .name }}</h2>
+    <div class="card bg-base-200 border border-base-300">
+      <div class="card-body gap-4 lg:flex-row lg:items-center lg:gap-8">
+        <div class="flex-1">
+          <p class="text-text-muted text-sm max-w-prose">{{ .description }}</p>
+          {{ with .url }}
+          <div class="card-actions mt-4">
+            <a href="{{ . }}" target="_blank" rel="noopener" class="btn btn-sm btn-accent btn-outline">Open {{ $.Params.romm.name }}</a>
+          </div>
+          {{ end }}
+        </div>
+        {{ with .stats }}
+        <div class="stats stats-horizontal bg-base-300 shrink-0">
+          {{ range . }}
+          <div class="stat py-3">
+            <div class="stat-title text-text-faint">{{ .label }}</div>
+            <div class="stat-value text-2xl text-text-primary">{{ .value }}</div>
+          </div>
+          {{ end }}
+        </div>
+        {{ end }}
+      </div>
+    </div>
+  </section>
+  {{ end }}
+
+  {{ with .Params.guides }}
+  <section class="mb-12">
+    <h2 class="text-xl font-semibold text-text-primary mb-5">How to Play</h2>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {{ range . }}
+      <div class="card bg-base-200 border border-base-300">
+        <div class="card-body">
+          <h3 class="card-title text-text-primary">{{ .title }}</h3>
+          <div class="content-body text-sm text-text-muted">{{ .body | markdownify }}</div>
+        </div>
+      </div>
+      {{ end }}
+    </div>
+  </section>
+  {{ end }}
+
+  {{ with .Params.guest_accounts }}
+  <section>
+    <h2 class="text-xl font-semibold text-text-primary mb-2">Guest Logins</h2>
+    {{ with $.Params.guest_note }}<p class="text-text-muted text-sm mb-5">{{ . }}</p>{{ end }}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {{ range . }}
+      <div class="card bg-base-200 border border-base-300">
+        <div class="card-body gap-1.5">
+          {{ partial "copy-field.html" (dict "value" .username "label" "username" "prefix" "User") }}
+          {{ partial "copy-field.html" (dict "value" .password "label" "password" "prefix" "Pass") }}
+        </div>
+      </div>
+      {{ end }}
+    </div>
+  </section>
+  {{ end }}
+
+</div>
+
+{{ partial "copy-script.html" . }}
+{{ end }}
