@@ -2,24 +2,15 @@
 {{ $immich := .Site.Params.immichURL }}
 {{ $album  := .Site.Params.immichAlbum }}
 {{ $key    := .Site.Params.immichKey }}
-<div class="flex flex-col h-full overflow-hidden">
+<div class="px-4 sm:px-8 lg:px-12 py-8 lg:py-12">
 
-  <!-- Header -->
-  <div class="px-4 sm:px-8 py-4 border-b border-border-default shrink-0 flex items-center justify-between gap-4">
-    <div class="min-w-0">
-      <h1 id="album-name" class="text-lg font-bold text-text-primary truncate">Photos</h1>
-      <p id="album-count" class="text-text-faint text-xs mt-0.5"></p>
-    </div>
-    <div id="status-msg" class="text-text-faint text-xs shrink-0"></div>
+  <div class="mb-6 pb-6 border-b border-border-default">
+    <h1 id="album-name" class="text-3xl font-bold text-text-primary">Photos</h1>
+    <p id="album-meta" class="mt-2 text-text-muted text-sm"></p>
   </div>
 
-  <!-- Grid: the wrapper scrolls so the grid keeps its natural height (a fixed-height grid squashes its rows) -->
-  <div class="flex-1 min-h-0 overflow-y-auto">
-    <div id="photo-grid"
-         class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-8 gap-1.5 sm:gap-2 p-3 sm:p-6">
-      <!-- Populated by JS -->
-    </div>
-  </div>
+  <!-- Justified rows grouped by day, laid out by JS -->
+  <div id="photo-groups"></div>
 
 </div>
 
@@ -42,14 +33,22 @@
 </div>
 
 <style>
+  .photo-row {
+    display: flex;
+    gap: var(--photo-gap);
+    margin-bottom: var(--photo-gap);
+  }
   .photo-cell {
-    aspect-ratio: 1;
+    flex: none;
+    padding: 0;
+    border: 0;
     background-color: var(--color-surface-raised);
     border-radius: 0.375rem;
     overflow: hidden;
     cursor: pointer;
     position: relative;
   }
+  .photo-cell:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   .photo-cell img {
     width: 100%;
     height: 100%;
@@ -57,13 +56,11 @@
     display: block;
     transition: opacity 0.2s;
   }
-  .photo-cell .placeholder {
-    width: 100%;
-    height: 100%;
+  .photo-cell:hover img { opacity: 0.85; }
+  .photo-cell.is-loading {
     background: var(--color-surface-overlay);
     animation: pulse 1.5s ease-in-out infinite;
   }
-  .photo-cell:hover img { opacity: 0.85; }
   .photo-cell .video-badge {
     position: absolute;
     bottom: 6px;
@@ -86,15 +83,15 @@
   const ALBUM  = "{{ $album }}";
   const KEY    = "{{ $key }}";
 
-  const grid      = document.getElementById('photo-grid');
+  const groupsEl  = document.getElementById('photo-groups');
+  const metaEl    = document.getElementById('album-meta');
   const lightbox  = document.getElementById('lightbox');
   const lbImg     = document.getElementById('lb-img');
   const lbCaption = document.getElementById('lb-caption');
-  const statusMsg = document.getElementById('status-msg');
 
-  let assets  = [];
+  let assets  = [];   // in display order, so the lightbox arrows follow the page
+  let groups  = [];   // [{ label, items: [{ asset, ratio, cell }] }]
   let current = 0;
-  // Cache object URLs so we don't re-fetch
   const blobCache = {};
 
   // ── Fetch helpers ──────────────────────────────────────────────
@@ -112,39 +109,117 @@
     return url;
   }
 
-  // ── Grid rendering ─────────────────────────────────────────────
-  function renderGrid(items) {
-    grid.innerHTML = '';
-    items.forEach((asset, i) => {
-      const cell = document.createElement('div');
-      cell.className = 'photo-cell';
-      cell.innerHTML = '<div class="placeholder"></div>'
-        + (asset.type === 'VIDEO' ? '<span class="video-badge">▶ video</span>' : '');
-      cell.addEventListener('click', () => openLightbox(i));
-      grid.appendChild(cell);
+  // ── Dates ──────────────────────────────────────────────────────
+  // Immich's localDateTime is the wall-clock time labelled as UTC, so read it back in UTC.
+  const dayFmt   = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const rangeFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  const takenAt  = a => a.localDateTime || a.fileCreatedAt;
 
-      // Lazy-load thumbnail via IntersectionObserver
-      const observer = new IntersectionObserver(entries => {
-        if (!entries[0].isIntersecting) return;
-        observer.disconnect();
-        blobURL(asset.id, 'thumbnail').then(url => {
-          const img = document.createElement('img');
-          img.src = url;
-          img.alt = asset.originalFileName || '';
-          cell.replaceChildren(img);
-          if (asset.type === 'VIDEO') {
-            const badge = document.createElement('span');
-            badge.className = 'video-badge';
-            badge.textContent = '▶ video';
-            cell.appendChild(badge);
-          }
-        }).catch(() => {
-          cell.querySelector('.placeholder')?.classList.remove('placeholder');
-        });
-      }, { rootMargin: '200px' });
-      observer.observe(cell);
-    });
+  // Width / height, preferring Immich's orientation-corrected size
+  function aspectRatio(a) {
+    if (a.width && a.height) return a.width / a.height;
+    const ex = a.exifInfo || {};
+    if (ex.exifImageWidth && ex.exifImageHeight) {
+      const rotated = ['5', '6', '7', '8'].includes(String(ex.orientation));
+      return rotated ? ex.exifImageHeight / ex.exifImageWidth : ex.exifImageWidth / ex.exifImageHeight;
+    }
+    return 1;
   }
+
+  // ── Lazy thumbnails ────────────────────────────────────────────
+  const thumbObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      thumbObserver.unobserve(entry.target);
+      const cell  = entry.target;
+      const asset = assets[cell.dataset.index];
+      blobURL(asset.id, 'thumbnail').then(url => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = '';
+        cell.prepend(img);
+      }).catch(() => {}).finally(() => cell.classList.remove('is-loading'));
+    });
+  }, { rootMargin: '400px' });
+
+  function buildGroups(items, newestFirst) {
+    const sorted = items.slice().sort((a, b) =>
+      newestFirst ? takenAt(b).localeCompare(takenAt(a)) : takenAt(a).localeCompare(takenAt(b)));
+    const byDay = new Map();
+    sorted.forEach(a => {
+      const day = takenAt(a).slice(0, 10);
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day).push(a);
+    });
+
+    assets = [];
+    groups = [...byDay.entries()].map(([day, list]) => ({
+      label: dayFmt.format(new Date(`${day}T00:00:00Z`)),
+      items: list.map(asset => {
+        const index = assets.push(asset) - 1;
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'photo-cell is-loading';
+        cell.dataset.index = index;
+        cell.setAttribute('aria-label', asset.originalFileName || 'Open photo');
+        if (asset.type === 'VIDEO') cell.insertAdjacentHTML('beforeend', '<span class="video-badge">▶ video</span>');
+        cell.addEventListener('click', () => openLightbox(index));
+        thumbObserver.observe(cell);
+        return { asset, ratio: aspectRatio(asset), cell };
+      }),
+    }));
+  }
+
+  // ── Justified layout ───────────────────────────────────────────
+  // Fill each row at the target height, then scale it to span the width exactly.
+  // The last row of a day keeps the target height rather than stretching.
+  function layout() {
+    const width = groupsEl.clientWidth;
+    if (!width || !groups.length) return;
+    const targetH = width < 640 ? 130 : width < 1024 ? 180 : 235;
+    const gap     = width < 640 ? 3 : 4;
+    groupsEl.style.setProperty('--photo-gap', `${gap}px`);
+
+    const frag = document.createDocumentFragment();
+    groups.forEach(group => {
+      const section = document.createElement('section');
+      section.className = 'mb-6';
+      section.innerHTML = `<h2 class="text-sm font-semibold text-text-primary mb-2"></h2>`;
+      section.firstChild.textContent = group.label;
+
+      let row = [];
+      let ratioSum = 0;
+      const flush = (fill) => {
+        if (!row.length) return;
+        const h = fill ? (width - gap * (row.length - 1)) / ratioSum : targetH;
+        const rowEl = document.createElement('div');
+        rowEl.className = 'photo-row';
+        row.forEach(item => {
+          item.cell.style.width  = `${item.ratio * h}px`;
+          item.cell.style.height = `${h}px`;
+          rowEl.appendChild(item.cell);
+        });
+        section.appendChild(rowEl);
+        row = []; ratioSum = 0;
+      };
+
+      group.items.forEach(item => {
+        row.push(item);
+        ratioSum += item.ratio;
+        if (ratioSum * targetH + gap * (row.length - 1) >= width) flush(true);
+      });
+      flush(false);
+      frag.appendChild(section);
+    });
+    groupsEl.replaceChildren(frag);
+  }
+
+  let lastWidth = 0;
+  new ResizeObserver(() => {
+    if (groupsEl.clientWidth === lastWidth) return;
+    lastWidth = groupsEl.clientWidth;
+    layout();
+  }).observe(groupsEl);
 
   // ── Lightbox ───────────────────────────────────────────────────
   function openLightbox(index) {
@@ -188,26 +263,30 @@
 
   // ── Load album ─────────────────────────────────────────────────
   async function init() {
-    statusMsg.textContent = 'Loading…';
+    metaEl.textContent = 'Loading…';
     try {
       const res = await apiFetch(`/api/albums/${ALBUM}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const album = await res.json();
 
       document.getElementById('album-name').textContent = album.albumName || 'Photos';
-      assets = (album.assets || []).filter(a => a.type === 'IMAGE' || a.type === 'VIDEO');
-      document.getElementById('album-count').textContent =
-        `${assets.length} item${assets.length !== 1 ? 's' : ''}`;
-      statusMsg.textContent = '';
-      renderGrid(assets);
+      const items = (album.assets || []).filter(a => a.type === 'IMAGE' || a.type === 'VIDEO');
+      const count = `${items.length} item${items.length !== 1 ? 's' : ''}`;
+      const start = album.startDate && rangeFmt.format(new Date(album.startDate));
+      const end   = album.endDate && rangeFmt.format(new Date(album.endDate));
+      metaEl.textContent = [start && (start === end ? start : `${start} – ${end}`), count].filter(Boolean).join(' · ');
+
+      buildGroups(items, album.order !== 'asc');
+      layout();
     } catch (err) {
-      statusMsg.innerHTML = '';
-      grid.innerHTML = `
-        <div class="col-span-full px-2 py-4 text-xs space-y-1">
+      metaEl.textContent = '';
+      groupsEl.innerHTML = `
+        <div class="text-xs space-y-1">
           <p class="text-accent font-medium">Could not load album</p>
-          <p class="text-text-faint">${err.message}</p>
+          <p class="text-text-faint"></p>
           <p class="text-text-faint">Check the IP, album ID, and API key in hugo.toml. Immich must also allow CORS from this site's origin.</p>
         </div>`;
+      groupsEl.querySelector('p + p').textContent = err.message;
     }
   }
 
