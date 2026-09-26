@@ -36,6 +36,7 @@ Hugo reads `HUGO_PARAMS_*` automatically:
 | `HUGO_PARAMS_TUNARRURL` | Tunarr HLS channel player base URL |
 | `HUGO_PARAMS_IMMICHURL` | Immich photo gallery base URL |
 | `HUGO_PARAMS_IMMICHALBUM` | Immich album ID to display |
+| `HUGO_PARAMS_IMMICHALBUM2` | Optional second Immich album ID; adds a channel 0 screen titled with the album's name |
 | `HUGO_PARAMS_IMMICHKEY` | Immich API key |
 | `HUGO_PARAMS_WEATHERLAT` | Latitude for the Local TV channel 0 weather screen |
 | `HUGO_PARAMS_WEATHERLON` | Longitude for the weather screen |
@@ -48,7 +49,8 @@ Never hardcode these values in `hugo.toml` or templates.
 
 Channel 0 ("Local Info") in `layouts/local-tv/list.html` is not a Tunarr stream. It rotates
 weather (Open-Meteo), a random game from `lan_games` in `content/games/_index.md`, and photos
-from the Immich album (with a fallback card), and muted video clips (mp4/webm/m4v) from
+from the Immich album (with a fallback card), photos from an optional second album (`immichAlbum2`,
+titled with its Immich album name; skipped when unset or empty), and muted video clips (mp4/webm/m4v) from
 `static/clips/`, while playing shuffled MP3s. Music: each subfolder of `static/music/` is a
 playlist chosen from a dropdown on the channel (default `TWC98`, `DEFAULT_PLAYLIST` in
 `layouts/local-tv/list.html`; the last choice is remembered per browser); loose MP3s directly in

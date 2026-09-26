@@ -2,6 +2,7 @@
 {{ $tunarr := .Site.Params.tunarrURL }}
 {{ $immich := .Site.Params.immichURL }}
 {{ $album  := .Site.Params.immichAlbum }}
+{{ $album2 := .Site.Params.immichAlbum2 }}
 {{ $key    := .Site.Params.immichKey }}
 
 {{/* Virtual channel 0 inputs: LAN games from the games page, MP3s from static/music */}}
@@ -228,6 +229,15 @@
             </div>
           </section>
 
+          {{ if $album2 }}
+          <section id="v-photos2" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
+            <div class="v-photos v-pad">
+              <p id="p2-title" class="v-label uppercase tracking-widest text-accent">From the photo gallery</p>
+              <div id="p2-grid" class="flex-1 min-h-0 grid" style="gap:calc(var(--uh, 3px) * 1.5) calc(var(--uw, 6px) * 1.5)"></div>
+            </div>
+          </section>
+          {{ end }}
+
           <section id="v-clip" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
             <div class="h-full bg-black" style="padding:var(--bar-t) 0 var(--bar-b)">
               <video id="c-video" class="w-full h-full object-contain" muted loop playsinline preload="auto"></video>
@@ -346,6 +356,7 @@
   const RADAR_TTL_MS = 5 * 60000;        // NWS refreshes radar every few minutes
   const IMMICH = "{{ $immich }}";
   const ALBUM  = "{{ $album }}";
+  const ALBUM2 = "{{ $album2 }}";        // optional second album, shown as its own screen titled with the album name
   const KEY    = "{{ $key }}";
   const LAN_GAMES    = {{ $games }};
   const MUSIC_PLAYLISTS = {{ $playlists }};
@@ -762,8 +773,8 @@
   let screenIndex = -1;
   let lastGameIndex = -1;
   let weatherCache = null;     // { at, data }
-  let albumCache = null;       // { at, assets }
-  let photoBlobUrls = [];
+  const albumCache = {};       // albumId -> { at, name, assets }
+  const photoBlobUrls = {};    // grid id -> blob URLs currently shown
   let musicQueue = [];
   let musicPos = 0;
   let musicErrors = 0;
@@ -895,43 +906,51 @@
     return true;
   }
 
-  // 3-4 random photos from the Immich album, or a fallback card
-  async function pickPhotoUrls(count) {
-    if (!IMMICH || !ALBUM || !KEY) return [];
-    const headers = { 'x-api-key': KEY };
-    if (!albumCache || Date.now() - albumCache.at > ALBUM_TTL_MS) {
-      const res = await fetch(`${IMMICH}/api/albums/${ALBUM}`, { headers });
-      if (!res.ok) throw new Error(`album HTTP ${res.status}`);
-      const album = await res.json();
-      albumCache = { at: Date.now(), assets: (album.assets || []).filter(a => a.type === 'IMAGE') };
-    }
-    const picks = shuffled(albumCache.assets).slice(0, count);
+  // Album listing (name + image assets), cached per album
+  async function loadAlbum(albumId) {
+    const cached = albumCache[albumId];
+    if (cached && Date.now() - cached.at <= ALBUM_TTL_MS) return cached;
+    const res = await fetch(`${IMMICH}/api/albums/${albumId}`, { headers: { 'x-api-key': KEY } });
+    if (!res.ok) throw new Error(`album HTTP ${res.status}`);
+    const album = await res.json();
+    return albumCache[albumId] = {
+      at: Date.now(),
+      name: album.albumName || '',
+      assets: (album.assets || []).filter(a => a.type === 'IMAGE'),
+    };
+  }
+
+  // Up to `count` random photos from an Immich album, as blob URLs
+  async function pickPhotoUrls(album, count) {
+    const picks = shuffled(album.assets).slice(0, count);
     const results = await Promise.allSettled(picks.map(async asset => {
-      const res = await fetch(`${IMMICH}/api/assets/${asset.id}/thumbnail?size=preview`, { headers });
+      const res = await fetch(`${IMMICH}/api/assets/${asset.id}/thumbnail?size=preview`, { headers: { 'x-api-key': KEY } });
       if (!res.ok) throw new Error(`thumbnail HTTP ${res.status}`);
       return URL.createObjectURL(await res.blob());
     }));
     return results.filter(r => r.status === 'fulfilled').map(r => r.value);
   }
 
-  async function preparePhotos() {
-    const grid = document.getElementById('p-grid');
-    const fallback = document.getElementById('p-fallback');
+  // Fill a photo screen from an album. Returns the album (or null) and whether any photos loaded.
+  async function fillPhotoGrid(gridId, albumId) {
+    const grid = document.getElementById(gridId);
+    let album = null;
     let urls = [];
-    try {
-      urls = await pickPhotoUrls(4);
-    } catch (err) {
-      console.warn('Photos unavailable:', err.message);
+    if (IMMICH && albumId && KEY) {
+      try {
+        album = await loadAlbum(albumId);
+        urls = await pickPhotoUrls(album, 4);
+      } catch (err) {
+        console.warn(`Photos unavailable (${albumId}):`, err.message);
+      }
     }
-    photoBlobUrls.forEach(u => URL.revokeObjectURL(u));
-    photoBlobUrls = urls;
+    (photoBlobUrls[gridId] || []).forEach(u => URL.revokeObjectURL(u));
+    photoBlobUrls[gridId] = urls;
 
     if (!urls.length) {
       grid.style.display = 'none';
-      fallback.style.display = 'flex';
-      return true;
+      return { album, ok: false };
     }
-    fallback.style.display = 'none';
     grid.style.display = 'grid';
     grid.style.gridTemplateColumns = urls.length === 1 ? '1fr' : '1fr 1fr';
     grid.style.gridTemplateRows = urls.length <= 2 ? '1fr' : '1fr 1fr';
@@ -948,7 +967,21 @@
       return waitForImage(img, url);
     });
     await Promise.all(loads);
+    return { album, ok: true };
+  }
+
+  // 3-4 random photos from the main Immich album, or a fallback card
+  async function preparePhotos() {
+    const { ok } = await fillPhotoGrid('p-grid', ALBUM);
+    document.getElementById('p-fallback').style.display = ok ? 'none' : 'flex';
     return true;
+  }
+
+  // Optional second album, titled with its Immich album name; skipped when it has no photos
+  async function preparePhotos2() {
+    const { album, ok } = await fillPhotoGrid('p2-grid', ALBUM2);
+    if (ok) document.getElementById('p2-title').textContent = album.name || 'From the photo gallery';
+    return ok;
   }
 
   // Muted video clips from static/clips. Separate media element from the
@@ -1045,6 +1078,7 @@
     { id: 'v-weather', prepare: prepareWeather },
     { id: 'v-game',    prepare: prepareGame },
     { id: 'v-photos',  prepare: preparePhotos },
+    ...(ALBUM2 ? [{ id: 'v-photos2', prepare: preparePhotos2 }] : []),
     { id: 'v-clip',    prepare: prepareClip },
   ];
 
