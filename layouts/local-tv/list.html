@@ -238,7 +238,7 @@
           <section id="v-photos" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
             <div class="v-photos v-pad">
               <p class="v-label uppercase tracking-widest text-accent">From the photo gallery</p>
-              <div id="p-grid" class="flex-1 min-h-0 grid" style="gap:calc(var(--uh, 3px) * 1.5) calc(var(--uw, 6px) * 1.5)"></div>
+              <div id="p-grid" class="flex-1 min-h-0 relative"></div>
               <div id="p-fallback" class="flex-1 min-h-0 flex-col items-center justify-center text-center bg-surface-raised rounded-lg border border-border-default" style="display:none;gap:calc(var(--uh, 3px) * 1.5)">
                 <p class="v-fb-title text-text-primary font-semibold">No photos to show yet</p>
                 <p class="v-fb-text text-text-muted">Add pictures to the shared album and they will appear here.</p>
@@ -250,7 +250,7 @@
           <section id="v-photos2" class="v-screen absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000">
             <div class="v-photos v-pad">
               <p id="p2-title" class="v-label uppercase tracking-widest text-accent">From the photo gallery</p>
-              <div id="p2-grid" class="flex-1 min-h-0 grid" style="gap:calc(var(--uh, 3px) * 1.5) calc(var(--uw, 6px) * 1.5)"></div>
+              <div id="p2-grid" class="flex-1 min-h-0 relative"></div>
             </div>
           </section>
           {{ end }}
@@ -965,27 +965,130 @@
     (photoBlobUrls[gridId] || []).forEach(u => URL.revokeObjectURL(u));
     photoBlobUrls[gridId] = urls;
 
-    if (!urls.length) {
-      grid.style.display = 'none';
-      return { album, ok: false };
-    }
-    grid.style.display = 'grid';
-    grid.style.gridTemplateColumns = urls.length === 1 ? '1fr' : '1fr 1fr';
-    grid.style.gridTemplateRows = urls.length <= 2 ? '1fr' : '1fr 1fr';
-    grid.innerHTML = '';
-    const loads = urls.map((url, idx) => {
-      const cell = document.createElement('div');
-      cell.className = 'rounded-lg overflow-hidden bg-surface-overlay min-h-0';
-      if (urls.length === 3 && idx === 0) cell.style.gridRow = 'span 2';
+    // Load off-screen first so each photo's shape is known before it is placed
+    const cells = (await Promise.all(urls.map(async url => {
       const img = document.createElement('img');
       img.alt = '';
       img.className = 'w-full h-full object-cover';
+      if (!await waitForImage(img, url)) return null;
+      const cell = document.createElement('div');
+      cell.className = 'absolute rounded-lg overflow-hidden bg-surface-overlay';
+      cell.dataset.ratio = img.naturalWidth / img.naturalHeight;
       cell.appendChild(img);
-      grid.appendChild(cell);
-      return waitForImage(img, url);
-    });
-    await Promise.all(loads);
+      return cell;
+    }))).filter(Boolean);
+
+    if (!cells.length) {
+      grid.style.display = 'none';
+      return { album, ok: false };
+    }
+    grid.style.display = '';
+    grid.replaceChildren(...cells);
+    layoutPhotoGrid(grid);
     return { album, ok: true };
+  }
+
+  // Place a grid's photos (sized by their aspect ratios) to fill its box.
+  // Re-run whenever the box changes size, since the screen shape varies.
+  function layoutPhotoGrid(grid) {
+    const W = grid.clientWidth, H = grid.clientHeight;
+    const cells = [...grid.children];
+    if (!W || !H || !cells.length) return;
+    const gap = (parseFloat(getComputedStyle(grid).getPropertyValue('--uh')) || 3) * 1.5;
+    const rects = arrangePhotos(cells.map(c => +c.dataset.ratio || 1), W, H, gap);
+    cells.forEach((cell, i) => {
+      const r = rects[i];
+      Object.assign(cell.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
+    });
+  }
+  if ('ResizeObserver' in window) {
+    const gridObserver = new ResizeObserver(entries => entries.forEach(e => layoutPhotoGrid(e.target)));
+    ['p-grid', 'p2-grid'].forEach(id => { const g = document.getElementById(id); if (g) gridObserver.observe(g); });
+  }
+
+  // Justified layout for a few photos: try every order and every split into rows
+  // (or columns), scale each to fit the box, and keep the one covering the most area
+  // with evenly sized photos.
+  // The winner is then stretched up to MAX_CROP to close leftover space (object-cover crops).
+  const MAX_CROP = 1.2;
+  const BALANCE  = 0.3;   // how strongly to prefer similar-sized photos over raw coverage
+  function arrangePhotos(ratios, W, H, gap) {
+    const n = ratios.length;
+    let best = null;
+    for (const order of permutations([...Array(n).keys()])) {
+      for (const sizes of compositions(n)) {
+        for (const vertical of [false, true]) {
+          // Columns are rows of the transposed box
+          const lines = [];
+          let k = 0;
+          sizes.forEach(len => {
+            lines.push(order.slice(k, k + len).map(i => ({ i, r: vertical ? 1 / ratios[i] : ratios[i] })));
+            k += len;
+          });
+          const fit = fitRows(lines, vertical ? H : W, vertical ? W : H, gap);
+          if (fit && (!best || fit.area > best.area)) best = { ...fit, vertical };
+        }
+      }
+    }
+    const rects = [];
+    best.rects.forEach(r => {
+      rects[r.i] = best.vertical ? { x: r.y, y: r.x, w: r.h, h: r.w } : r;
+    });
+    return rects;
+  }
+
+  // Lay out rows of photos ({ i, r: width/height }) in a W×H box, centred.
+  function fitRows(lines, W, H, gap) {
+    const sums = lines.map(line => line.reduce((s, p) => s + p.r, 0));
+    const gapsX = lines.map(line => gap * (line.length - 1));
+    const gapsY = gap * (lines.length - 1);
+    // Row height is (width - gaps) / ratio sum; pick the width where the rows exactly fill H
+    const A = sums.reduce((s, R) => s + 1 / R, 0);
+    const B = lines.reduce((s, _, j) => s + gapsX[j] / sums[j], 0);
+    let w = Math.min(W, (H - gapsY + B) / A);
+    let heights = sums.map((R, j) => (w - gapsX[j]) / R);
+    if (heights.some(h => h <= 0)) return null;
+    // Covered area, discounted when photo sizes are lopsided (one big, the rest tiny)
+    const areas = lines.flatMap((line, j) => line.map(p => heights[j] * heights[j] * p.r));
+    const area = areas.reduce((s, a) => s + a, 0) * (Math.min(...areas) / Math.max(...areas)) ** BALANCE;
+
+    // Stretch into leftover space, within the crop limit
+    const usedH = heights.reduce((s, h) => s + h, 0);
+    if (w < W) {
+      w = Math.min(W, w * MAX_CROP);
+    } else if (usedH + gapsY < H) {
+      const k = Math.min(MAX_CROP, (H - gapsY) / usedH);
+      heights = heights.map(h => h * k);
+    }
+    const totalH = heights.reduce((s, h) => s + h, 0) + gapsY;
+
+    const rects = [];
+    let y = (H - totalH) / 2;
+    lines.forEach((line, j) => {
+      let x = (W - w) / 2;
+      const scale = (w - gapsX[j]) / sums[j];
+      line.forEach(p => {
+        rects.push({ i: p.i, x, y, w: p.r * scale, h: heights[j] });
+        x += p.r * scale + gap;
+      });
+      y += heights[j] + gap;
+    });
+    return { area, rects };
+  }
+
+  function permutations(arr) {
+    if (arr.length <= 1) return [arr];
+    return arr.flatMap((v, i) => permutations([...arr.slice(0, i), ...arr.slice(i + 1)]).map(p => [v, ...p]));
+  }
+
+  // Ways to split n items into ordered groups, e.g. 3 -> [3], [1,2], [2,1], [1,1,1]
+  function compositions(n) {
+    if (n === 0) return [[]];
+    const out = [];
+    for (let first = 1; first <= n; first++) {
+      compositions(n - first).forEach(rest => out.push([first, ...rest]));
+    }
+    return out;
   }
 
   // 3-4 random photos from the main Immich album, or a fallback card
