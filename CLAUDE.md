@@ -59,7 +59,9 @@ of up to 5 subfolders of `static/clips/` is a clip folder (mount one NAS folder 
 e.g. `/src/static/clips/cartoons`), and loose videos directly in `static/clips/` also count.
 Loose videos in `static/clips/` are the "assorted" pool (about half of all clips); each
 subfolder is one game, penalised for recent use so no single game dominates, and clips within
-a folder are shuffled-bag random (no repeats until all have played). Both folders are gitignored, and
+a folder are shuffled-bag random (no repeats until all have played). A clip shows subtitles when an
+`.srt` sits beside it with the same base name (`clip.srt`, or a suffixed `clip.en.srt`); it is
+converted to WebVTT in the browser. Both folders are gitignored, and
 their file lists are read at Hugo start, so restart `hugo server` after adding files.
 
 ## Content Structure

@@ -32,26 +32,42 @@
   {{ if $looseTracks }}{{ $playlists = $playlists | append (dict "name" "Unsorted" "dir" "" "files" $looseTracks) }}{{ end }}
 {{ end }}
 {{/* Muted video clips for channel 0: up to 5 subfolders of static/clips (one per mount),
-     plus any loose videos directly in static/clips. Each entry is {dir, files}. */}}
+     plus any loose videos directly in static/clips. Each entry is {dir, files, subs}: subs[i] is
+     the .srt subtitle file for files[i] ("" if none). A subtitle matches when it has the same
+     base name ("clip.srt"), or the base name plus a suffix ("clip.en.srt", "clip (English).srt"). */}}
 {{ $clipFolders := slice }}
 {{ if os.FileExists "static/clips" }}
-  {{ $rootFiles := slice }}
   {{ $subdirs := slice }}
   {{ range os.ReadDir "static/clips" }}
-    {{ if .IsDir }}
-      {{ if not (strings.HasPrefix .Name ".") }}{{ $subdirs = $subdirs | append .Name }}{{ end }}
-    {{ else if findRE `(?i)\.(mp4|webm|m4v)$` .Name }}
-      {{ $rootFiles = $rootFiles | append .Name }}
-    {{ end }}
+    {{ if and .IsDir (not (strings.HasPrefix .Name ".")) }}{{ $subdirs = $subdirs | append .Name }}{{ end }}
   {{ end }}
-  {{ if $rootFiles }}{{ $clipFolders = $clipFolders | append (dict "dir" "" "files" $rootFiles) }}{{ end }}
-  {{ range first 5 $subdirs }}
+  {{ $dirs := slice "" }}
+  {{ range first 5 $subdirs }}{{ $dirs = $dirs | append . }}{{ end }}
+  {{ range $dirs }}
     {{ $dir := . }}
     {{ $files := slice }}
+    {{ $srts := slice }}
     {{ range os.ReadDir (path.Join "static/clips" $dir) }}
-      {{ if and (not .IsDir) (findRE `(?i)\.(mp4|webm|m4v)$` .Name) }}{{ $files = $files | append .Name }}{{ end }}
+      {{ if not .IsDir }}
+        {{ if findRE `(?i)\.(mp4|webm|m4v)$` .Name }}{{ $files = $files | append .Name }}
+        {{ else if findRE `(?i)\.srt$` .Name }}{{ $srts = $srts | append .Name }}{{ end }}
+      {{ end }}
     {{ end }}
-    {{ if $files }}{{ $clipFolders = $clipFolders | append (dict "dir" $dir "files" $files) }}{{ end }}
+    {{ if $files }}
+      {{ $subs := slice }}
+      {{ range $files }}
+        {{ $base := lower (strings.TrimSuffix (path.Ext .) .) }}
+        {{ $exact := "" }}
+        {{ $near := "" }}
+        {{ range $srts }}
+          {{ $s := lower . }}
+          {{ if eq $s (printf "%s.srt" $base) }}{{ $exact = . }}
+          {{ else if and (not $near) (strings.HasPrefix $s $base) (findRE `^[^a-z0-9]` (strings.TrimPrefix $base $s)) }}{{ $near = . }}{{ end }}
+        {{ end }}
+        {{ $subs = $subs | append (or $exact $near) }}
+      {{ end }}
+      {{ $clipFolders = $clipFolders | append (dict "dir" $dir "files" $files "subs" $subs) }}
+    {{ end }}
   {{ end }}
 {{ end }}
 
@@ -77,6 +93,7 @@
   .ltv-guide  { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
                 background: var(--color-surface-raised); border-top: 1px solid var(--color-border-default); }
   .ltv-guide-bar { padding: .5rem 1rem; }
+  #c-video::cue { color: #fff; background: rgb(0 0 0 / .75); font-family: inherit; line-height: 1.3; }
 
   .epg-grid  { position: relative; display: grid; grid-template-columns: var(--epg-name-w) var(--epg-time-w); }
   .epg-head  { height: var(--epg-head-h); }
@@ -310,6 +327,7 @@
 
 </div>
 
+{{ partial "copy-script.html" . }}
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
 <script>
 (function () {
@@ -727,7 +745,7 @@
   copyStreamBtn.addEventListener('click', () => {
     const url = copyStreamBtn.dataset.copy;
     if (!url) return;
-    navigator.clipboard.writeText(url).then(() => {
+    window.copyText(url).then(() => {
       copyStreamBtn.textContent = 'Copied!';
       clearTimeout(copyStreamBtn._resetTimer);
       copyStreamBtn._resetTimer = setTimeout(() => { copyStreamBtn.textContent = 'Copy Stream Link'; }, 1500);
@@ -1036,8 +1054,42 @@
 
   let screenHoldMs = SCREEN_MS;   // prepare functions may override (clips hold for their own length)
 
+  // Subtitles: browsers only render WebVTT, so each clip's .srt is fetched and
+  // converted once, then attached as a <track> (cached as a blob URL).
+  const subtitleUrls = new Map(); // srt URL -> VTT blob URL, or null if it failed
+
+  function srtToVtt(srt) {
+    return 'WEBVTT\n\n' + srt
+      .replace(/^﻿/, '')
+      .replace(/\r\n?/g, '\n')
+      .replace(/(\d{1,2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+  }
+
+  async function loadSubtitles(srtUrl) {
+    if (subtitleUrls.has(srtUrl)) return subtitleUrls.get(srtUrl);
+    let url = null;
+    try {
+      const res = await fetch(srtUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const bytes = await res.arrayBuffer();
+      let text;
+      try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+      catch { text = new TextDecoder('windows-1252').decode(bytes); } // older SRTs are often ANSI
+      url = URL.createObjectURL(new Blob([srtToVtt(text)], { type: 'text/vtt' }));
+    } catch (err) {
+      console.warn('Subtitles failed to load:', srtUrl, err.message);
+    }
+    subtitleUrls.set(srtUrl, url);
+    return url;
+  }
+
+  function clearSubtitles() {
+    cVideo.querySelectorAll('track').forEach(t => t.remove());
+  }
+
   function stopClip() {
     cVideo.pause();
+    clearSubtitles();
     cVideo.removeAttribute('src');
     cVideo.load();
   }
@@ -1047,10 +1099,22 @@
     const fi = pickClipFolder();
     const folder = CLIP_FOLDERS[fi];
     const ci = pickClipInFolder(fi);
-    const clipUrl = (folder.dir ? `/clips/${encodeURIComponent(folder.dir)}/` : '/clips/')
-      + encodeURIComponent(folder.files[ci]);
+    const base = folder.dir ? `/clips/${encodeURIComponent(folder.dir)}/` : '/clips/';
+    const clipUrl = base + encodeURIComponent(folder.files[ci]);
+    const srt = folder.subs && folder.subs[ci];
+    const vttUrl = srt ? await loadSubtitles(base + encodeURIComponent(srt)) : null;
 
     cVideo.muted = true;
+    clearSubtitles();
+    if (vttUrl) {
+      const track = document.createElement('track');
+      track.kind = 'subtitles';
+      track.label = 'Subtitles';
+      track.default = true;
+      track.src = vttUrl;
+      cVideo.appendChild(track);
+      track.track.mode = 'showing';
+    }
     const ready = await new Promise(resolve => {
       const finish = ok => { clearTimeout(timer); cVideo.onloadeddata = null; cVideo.onerror = null; resolve(ok); };
       const timer = setTimeout(() => finish(false), 8000);

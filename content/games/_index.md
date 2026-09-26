@@ -39,8 +39,8 @@ lan_games:
     links:
       - label: "geshl2.com"
         url: "https://geshl2.com"
-    server_address: "192.168.1.234:27015"
-    server_note: "Use Find Servers → LAN or direct-connect in the Source engine browser"
+    server_address: "geserver.thasauce.net"
+    server_note: "Open the console (~) and type connect geserver.thasauce.net, or add it under Find Servers → Favorites"
   - name: "Gunbound Thor's Hammer"
     image: ""
     description: "Turn-based artillery multiplayer in the style of Worms. Pick a mobile (vehicle), adjust your angle and power, and account for wind as you lob shots at the opposing team. Free-to-play classic from the early 2000s."
