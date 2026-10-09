@@ -400,7 +400,7 @@
   let retryTimer = null;
   let channels = [];
   let activeChannel = null;
-  let programsByChannel = {}; // tunarr channel id -> [{start, stop, title}] (title includes " · S01E02" when known)
+  let programsByChannel = {}; // tunarr channel id -> [{start, stop, title, ep}] (ep is e.g. "S01E02" or undefined)
   let epgRowEls = []; // dynamically created grid row cells, tracked for cleanup
   let autoScrollEnabled = false;
   let autoScrollTimer = null;
@@ -458,11 +458,10 @@
       const chId = p.getAttribute('channel');
       const start = parseXmltvDate(p.getAttribute('start'));
       const stop  = parseXmltvDate(p.getAttribute('stop'));
-      let title = p.querySelector('title')?.textContent?.trim() || 'Untitled';
+      const title = p.querySelector('title')?.textContent?.trim() || 'Untitled';
       const ep = p.querySelector('episode-num[system="onscreen"]')?.textContent?.trim();
-      if (ep) title += ` · ${ep}`;
       if (!chId || !start || !stop) return;
-      (programmesByXmltvId[chId] ||= []).push({ start, stop, title });
+      (programmesByXmltvId[chId] ||= []).push({ start, stop, title, ep });
     });
 
     const map = {};
@@ -541,8 +540,9 @@
                   : 'bg-surface-overlay text-text-muted border border-border-default hover:text-text-primary hover:border-text-faint'}"
                 style="left:${left}px;width:${width}px"
                 data-channel="${ch.id}"
-                title="${escapeHtml(p.title)}${ch.virtual ? '' : ` (${formatHM(p.start)}–${formatHM(p.stop)})`}">
+                title="${escapeHtml(p.title)}${p.ep ? ` ${escapeHtml(p.ep)}` : ''}${ch.virtual ? '' : ` (${formatHM(p.start)}–${formatHM(p.stop)})`}">
           <span class="block truncate font-medium">${escapeHtml(p.title)}</span>
+          ${p.ep ? `<span class="block truncate text-[10px] opacity-75">${escapeHtml(p.ep)}</span>` : ''}
         </button>`;
     });
     timelineCell.innerHTML = blocksHTML || '<span class="absolute inset-0 flex items-center px-3 text-[11px] text-text-faint italic">No guide data</span>';
