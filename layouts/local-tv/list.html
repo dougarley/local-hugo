@@ -400,7 +400,7 @@
   let retryTimer = null;
   let channels = [];
   let activeChannel = null;
-  let programsByChannel = {}; // tunarr channel id -> [{start, stop, title}]
+  let programsByChannel = {}; // tunarr channel id -> [{start, stop, title}] (title includes " · S01E02" when known)
   let epgRowEls = []; // dynamically created grid row cells, tracked for cleanup
   let autoScrollEnabled = false;
   let autoScrollTimer = null;
@@ -458,7 +458,9 @@
       const chId = p.getAttribute('channel');
       const start = parseXmltvDate(p.getAttribute('start'));
       const stop  = parseXmltvDate(p.getAttribute('stop'));
-      const title = p.querySelector('title')?.textContent?.trim() || 'Untitled';
+      let title = p.querySelector('title')?.textContent?.trim() || 'Untitled';
+      const ep = p.querySelector('episode-num[system="onscreen"]')?.textContent?.trim();
+      if (ep) title += ` · ${ep}`;
       if (!chId || !start || !stop) return;
       (programmesByXmltvId[chId] ||= []).push({ start, stop, title });
     });
